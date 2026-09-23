@@ -51,3 +51,15 @@ test('client registers a General settings row backed by the existing namespace',
 	assert.equal(row.options.inject().scope, scope);
 	assert.equal(typeof row.component, 'function');
 });
+
+test('proxy mode is a dropdown with no Apply button', () => {
+	assert.match(source, /React\.createElement\('select', \{ className: 'dshProxyMode'/);
+	assert.match(source, /onChange: \(event\) => changeMode\(event\.target\.value\)/);
+	assert.doesNotMatch(source, /dshProxyApply|type: 'submit'/);
+});
+
+test('manual edits save on blur and invalid URLs cannot be committed', () => {
+	assert.match(source, /onBlur: commitManual/);
+	assert.match(source, /!proxyValid\(draft\.proxy\.trim\(\)\)\) return/);
+	assert.match(source, /await scope\.mutate\(/);
+});

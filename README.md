@@ -78,12 +78,13 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
 ## Use
 
-In the Web profile, open Settings → General → Network proxy. Choose Direct,
-Follow system, or Manual proxy; in Manual mode enter an HTTP(S)/SOCKS5 URL,
-bypass hosts (one per line), and whether to export proxy variables for new child
-processes. Apply writes the **same** `dsh-proxy` settings section. Editing the
-file remains supported and refreshes the UI; a revision fence prevents a stale
-UI draft from silently overwriting an external edit.
+In the Web profile, open Settings → General → Network proxy. Select Direct,
+Follow system, or Manual proxy from the dropdown; mode changes apply immediately,
+without an Apply button. In Manual mode, enter an HTTP(S)/SOCKS5 URL and bypass
+hosts (one per line); text fields save on blur, while the child-process env switch
+saves on change. Invalid URLs are not saved. The UI writes the **same** `dsh-proxy`
+settings section. Editing the file remains supported and refreshes the UI; a
+revision fence prevents a stale edit from silently overwriting an external change.
 
 Alternatively, edit `~/.config/dsh/settings.yaml` (hot-reloaded, no restart). One `mode` key
 picks the routing strategy — `direct`, `system`, or `manual`:
