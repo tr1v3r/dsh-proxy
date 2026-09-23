@@ -176,6 +176,15 @@ test('quick switch declines unconfigured manual mode and handles read-only state
 	assert.ok(h.walk(h.render(), (node) => node.props?.role === 'alert'));
 });
 
+test('quick action centres itself in the sidebar footer row', () => {
+	// The footer row is `align-items:normal`, so a registrant lines up with its
+	// siblings only by centring itself. Sibling triggers are 36px tall with a
+	// 16px icon in the wide column and 18px in the rail.
+	assert.match(source, /\.dshProxyQuick\{[^}]*align-self:center[^}]*\}/);
+	assert.doesNotMatch(source, /\.dshProxyQuick\{[^}]*margin:8px/);
+	assert.match(source, /IconGlobeOutline14, \{ size: wide \? 16 : 18 \}/);
+});
+
 test('manual edits save on blur and invalid URLs cannot be committed', () => {
 	assert.match(source, /onBlur: commitManual/);
 	assert.match(source, /!proxyValid\(draft\.proxy\.trim\(\)\)\) return/);
