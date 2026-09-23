@@ -78,8 +78,9 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
 ## Use
 
-In the Web profile, use the **Proxy status** icon in the sidebar footer (above Settings) to
-check the selected mode and switch between Direct, Follow system, and Manual proxy
+In the Web profile, use the icon-only **Proxy status** control in the sidebar footer
+(above Settings) to check the selected mode on hover/focus or in its menu and switch
+between Direct, Follow system, and Manual proxy
 without leaving the main screen. The menu uses the same settings namespace and updates
 when `settings.yaml` changes externally. The tooltip shows the manual endpoint with
 credentials masked; Follow system reflects the *selected mode*, not a guarantee that

@@ -123,15 +123,16 @@ function snapshot(mode, proxy = '', revision = 1, writable = true) {
 	return { status: 'ready', value: { mode, proxy }, user: { mode }, revision, writable };
 }
 
-test('quick action renders the selected mode, redacts credentials and collapses to icon', () => {
+test('quick action keeps mode in tooltip but displays only icon at every sidebar width', () => {
 	const h = quickHarness(snapshot('manual', 'socks5://user:secret@127.0.0.1:1080'));
 	let tree = h.render();
 	const anchor = h.walk(tree, (node) => node.props?.className === 'dshProxyQuickButton');
 	assert.match(anchor.props['aria-label'], /manualEndpoint: socks5:\/\/\*\*\*@127\.0\.0\.1:1080/);
 	assert.doesNotMatch(anchor.props['aria-label'], /user|secret/);
 	assert.equal(tree.props['data-mode'], 'manual');
-	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickState').props.children[0], 'manual');
+	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickState'), null);
 	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickText'), null);
+	assert.ok(h.walk(anchor, (node) => node.props?.className === 'dshProxyQuickIcon'));
 	tree = h.render(false);
 	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickState'), null);
 	assert.ok(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickIcon'));
