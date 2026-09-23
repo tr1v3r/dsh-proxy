@@ -131,6 +131,7 @@ test('quick action renders the selected mode, redacts credentials and collapses 
 	assert.doesNotMatch(anchor.props['aria-label'], /user|secret/);
 	assert.equal(tree.props['data-mode'], 'manual');
 	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickState').props.children[0], 'manual');
+	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickText'), null);
 	tree = h.render(false);
 	assert.equal(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickState'), null);
 	assert.ok(h.walk(tree, (node) => node.props?.className === 'dshProxyQuickIcon'));
