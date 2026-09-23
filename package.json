@@ -1,6 +1,6 @@
 {
   "name": "@tr1v3r/dsh-proxy",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Runtime-switchable outbound proxy for the DeepSeek Harness: hot-reload HTTP(S)/SOCKS5 routing for every global-fetch request via a settings section.",
   "keywords": [
     "dsh",
