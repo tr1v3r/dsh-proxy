@@ -1,0 +1,45 @@
+name: Publish
+
+# Releases stay human-gated: push the version tag, then run this workflow
+# once from the Actions tab. Nothing publishes on merge or push alone.
+#
+# One-time npmjs.com setup (package owner):
+#   package settings → Publishing access → enable Trusted Publishing with
+#   GitHub Actions, binding this repository + the "publish" workflow.
+# With that in place the OIDC token below authenticates npm, no OTP and no
+# stored NODE_AUTH_TOKEN, and the npm page shows the provenance badge.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to publish (e.g. v0.2.0)"
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing / provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+      - name: Verify tag matches package version
+        run: |
+          TAG="${{ inputs.tag }}"
+          EXPECTED="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$EXPECTED" ]; then
+            echo "tag $TAG does not match package version $EXPECTED"
+            exit 1
+          fi
+          echo "publishing $TAG"
+      - run: npm ci
+      - run: npm test
+      - run: npm publish --provenance --access public

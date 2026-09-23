@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # undici and schemastery are real runtime dependencies, so the suite
+      # cannot run from a bare checkout the way the zero-dependency sibling
+      # plugins do. Every test target is a loopback server, so no network
+      # egress is required beyond this install.
+      - run: npm ci
+      - run: npm test
+
+  pack:
+    # Publishes are gated behind a manual workflow run, but the files
+    # whitelist is easy to break silently (a new asset that never ships).
+    # Fail early when the packed tarball no longer matches expectations.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm pack --dry-run
+      - name: Assert packed contents
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e '
+            const data = require("./pack.json");
+            // npm >= 11 nests the report under the package name.
+            const report = data.files !== undefined ? data : Object.values(data)[0];
+            const names = report.files.map((f) => f.path).sort();
+            const expected = [
+              "LICENSE",
+              "README.md",
+              "README.zh.md",
+              "cordis.patch.yml",
+              "docs/assets/proxy-manual-settings.png",
+              "docs/assets/proxy-modes.png",
+              "docs/assets/proxy-switch-demo.gif",
+              "lib/client.js",
+              "lib/index.d.ts",
+              "lib/index.js",
+              "package.json",
+              "scripts/demo.mjs"
+            ].sort();
+            if (JSON.stringify(names) !== JSON.stringify(expected)) {
+              console.error("unexpected packed contents:", names);
+              process.exit(1);
+            }
+            console.log("packed contents OK:", names.length, "files");
+          '
+      - name: Clean up pack report
+        if: always()
+        run: rm -f pack.json
