@@ -78,7 +78,16 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
 ## Use
 
-In the Web profile, open Settings → General → Network proxy. Select Direct,
+In the Web profile, use the **Proxy status** icon in the sidebar footer (above Settings) to
+check the selected mode and switch between Direct, Follow system, and Manual proxy
+without leaving the main screen. The menu uses the same settings namespace and updates
+when `settings.yaml` changes externally. The tooltip shows the manual endpoint with
+credentials masked; Follow system reflects the *selected mode*, not a guarantee that
+the host detected a usable proxy (consult DSH logs for the effective route). A missing
+manual URL cannot be activated from the quick menu. To edit the URL, bypass hosts, or
+child-process export, open Settings → General → Network proxy.
+
+In Settings → General → Network proxy, select Direct,
 Follow system, or Manual proxy from the dropdown; mode changes apply immediately,
 without an Apply button. In Manual mode, enter an HTTP(S)/SOCKS5 URL and bypass
 hosts (one per line); text fields save on blur, while the child-process env switch
