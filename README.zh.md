@@ -11,7 +11,8 @@
 `@tr1v3r/dsh-proxy` 是 DeepSeek Harness 插件，把进程内**所有出站请求**——
 LLM 提供方、`web_search` / `web_fetch`、streamable-http MCP——经由
 HTTP(S) CONNECT 或 SOCKS5 代理转发，并且支持**运行时随时开关、随时换代理**：
-只需编辑 `$DSH_HOME/settings.yaml` 的一个分节（watcher 热加载），全程零重启。
+可以在 Web「设置 → 通用 → 网络代理」中操作，也可以继续编辑
+`$DSH_HOME/settings.yaml` 的同一个分节（watcher 热加载），全程零重启。
 上面的动图是真实录制，安装后可运行 `node scripts/demo.mjs` 复现。
 
 ## 工作原理
@@ -68,7 +69,13 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
 
 ## 使用
 
-编辑 `~/.config/dsh/settings.yaml`（热加载，立即生效）。一个 `mode` 键即可在
+Web profile 可打开「设置 → 通用 → 网络代理」：选择直连、跟随系统或手动代理；
+手动模式可以填写 HTTP(S)/SOCKS5 URL、直连地址（每行一个）和子进程环境变量开关，
+点击「应用」即写入**同一个** `dsh-proxy` 设置分节。文件配置仍然完整保留：
+直接编辑 `~/.config/dsh/settings.yaml` 会热加载，并同步到图形界面；编辑过程中
+若文件在别处被改动，保存会被修订号冲突保护拒绝，避免覆盖新值。
+
+也可以只编辑 `~/.config/dsh/settings.yaml`（热加载，立即生效）。一个 `mode` 键即可在
 三种模式间切换——`direct`（直连）、`system`（跟随系统）、`manual`（手动）：
 
 ```yaml

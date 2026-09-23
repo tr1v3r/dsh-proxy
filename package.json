@@ -14,7 +14,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --check lib/index.js && node --test test/switch.test.mjs"
+    "test": "node --check lib/index.js && node --check lib/client.js && node --test test/*.test.mjs"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -24,6 +24,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -39,6 +40,14 @@
     "node": ">=20"
   },
   "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ],
+      "platform": "web"
+    },
     "engines": {
       "dsh": ">=0.1.2-rc.1"
     },

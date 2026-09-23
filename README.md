@@ -12,7 +12,8 @@
 in-process outbound request** — LLM providers, `web_search` / `web_fetch`,
 streamable-http MCP — through an HTTP(S) CONNECT or SOCKS5 proxy, and lets
 you **flip the proxy on, off, or to another server at runtime**, with zero
-restarts, by editing one section of `$DSH_HOME/settings.yaml` (hot-reloaded).
+restarts, either from the Web Settings → General → Network proxy control or
+by editing one section of `$DSH_HOME/settings.yaml` (hot-reloaded).
 The demo above is a real recording: `node scripts/demo.mjs` after install.
 
 ## How it works
@@ -77,7 +78,14 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
 ## Use
 
-Edit `~/.config/dsh/settings.yaml` (hot-reloaded, no restart). One `mode` key
+In the Web profile, open Settings → General → Network proxy. Choose Direct,
+Follow system, or Manual proxy; in Manual mode enter an HTTP(S)/SOCKS5 URL,
+bypass hosts (one per line), and whether to export proxy variables for new child
+processes. Apply writes the **same** `dsh-proxy` settings section. Editing the
+file remains supported and refreshes the UI; a revision fence prevents a stale
+UI draft from silently overwriting an external edit.
+
+Alternatively, edit `~/.config/dsh/settings.yaml` (hot-reloaded, no restart). One `mode` key
 picks the routing strategy — `direct`, `system`, or `manual`:
 
 ```yaml
