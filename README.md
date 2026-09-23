@@ -86,6 +86,12 @@ saves on change. Invalid URLs are not saved. The UI writes the **same** `dsh-pro
 settings section. Editing the file remains supported and refreshes the UI; a
 revision fence prevents a stale edit from silently overwriting an external change.
 
+![Manual proxy settings in the DSH Web interface](docs/assets/proxy-manual-settings.png)
+
+The selector offers all three routing modes:
+
+![Network proxy mode menu: Direct, Follow system, Manual proxy](docs/assets/proxy-modes.png)
+
 Alternatively, edit `~/.config/dsh/settings.yaml` (hot-reloaded, no restart). One `mode` key
 picks the routing strategy — `direct`, `system`, or `manual`:
 

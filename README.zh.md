@@ -76,6 +76,12 @@ Web profile 可打开「设置 → 通用 → 网络代理」：从下拉列表�
 直接编辑 `~/.config/dsh/settings.yaml` 会热加载并同步到图形界面；并发修改由修订号保护，
 避免覆盖新值。
 
+![DSH Web 手动代理设置界面](docs/assets/proxy-manual-settings.png)
+
+下拉菜单提供三种出站模式：
+
+![网络代理模式菜单：直连、跟随系统、手动代理](docs/assets/proxy-modes.png)
+
 也可以只编辑 `~/.config/dsh/settings.yaml`（热加载，立即生效）。一个 `mode` 键即可在
 三种模式间切换——`direct`（直连）、`system`（跟随系统）、`manual`（手动）：
 

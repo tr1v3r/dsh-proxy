@@ -18,8 +18,9 @@ function mountClient() {
 	};
 	runInNewContext(source, context);
 	return registration.factory((id) => {
-		assert.equal(id, 'react');
-		return { createElement: (...args) => args };
+		if (id === 'react') return { createElement: (...args) => args };
+		if (id === '@deepseek-ai/dsh-client-ui-primitives') return { Menu: () => {}, IconChevronDownOutline14: () => {} };
+		assert.fail(`unexpected browser import: ${id}`);
 	});
 }
 
@@ -27,6 +28,7 @@ test('Web client is discoverable by the DSH module loader', () => {
 	assert.equal(pkg.exports['./client'], './lib/client.js');
 	assert.equal(pkg.dsh.client.platform, 'web');
 	assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings'));
+	assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'));
 	assert.ok(pkg.files.includes('lib'));
 });
 
@@ -52,10 +54,11 @@ test('client registers a General settings row backed by the existing namespace',
 	assert.equal(typeof row.component, 'function');
 });
 
-test('proxy mode is a dropdown with no Apply button', () => {
-	assert.match(source, /React\.createElement\('select', \{ className: 'dshProxyMode'/);
-	assert.match(source, /onChange: \(event\) => changeMode\(event\.target\.value\)/);
-	assert.doesNotMatch(source, /dshProxyApply|type: 'submit'/);
+test('proxy mode uses the DSH menu primitive with no Apply button', () => {
+	assert.match(source, /React\.createElement\(Menu, \{/);
+	assert.match(source, /React\.createElement\(IconChevronDownOutline14/);
+	assert.match(source, /onSelect: \(mode\) => \{ setOpen\(false\); changeMode\(mode\); \}/);
+	assert.doesNotMatch(source, /React\.createElement\('select'|dshProxyApply|type: 'submit'/);
 });
 
 test('manual edits save on blur and invalid URLs cannot be committed', () => {
