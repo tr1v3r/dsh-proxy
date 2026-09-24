@@ -1,20 +1,21 @@
 /**
  * Real-runtime hot-switch probe. Boots an actual DSH plugin tree (dsh-base
- * + @tr1v3r/dsh-proxy) from a throwaway DSH_HOME, then flips the
- * `dsh-proxy:` settings section in settings.yaml and verifies that the
+ * + @tr1v3r/dsh-proxy) from a throwaway DSH_HOME, then changes the
+ * `dsh-proxy` entry through DSH Settings and verifies that the
  * global dispatcher, child-process env, and live fetch routing follow along
  * without a restart.
  *
  * Usage: node scripts/boot-probe.mjs
- * Requires the global `@deepseek-ai/dsh` installation (fnm node dir).
+ * Requires a `dsh` installation on PATH (or DSH_ROOT set to its package root).
  */
 
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync, rmSync, cpSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync, rmSync, cpSync, realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { getGlobalDispatcher } from 'undici';
 
-const DSH_ROOT = '/Users/bytedance/.local/share/fnm/node-versions/v24.20.0/installation/lib/node_modules/@deepseek-ai/dsh';
+const DSH_ROOT = process.env.DSH_ROOT ?? dirname(dirname(realpathSync(execFileSync('which', ['dsh'], { encoding: 'utf8' }).trim())));
 const APP_BOOT = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js`;
 const LAUNCH_ENV = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-launch-environment/lib/index.js`;
 const CMDLINE = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-cmdline/lib/index.js`;
@@ -50,15 +51,6 @@ rmSync(HOME, { recursive: true, force: true });
 const profileDir = join(HOME, 'profiles', PROFILE);
 mkdirSync(profileDir, { recursive: true });
 
-writeFileSync(join(HOME, 'settings.yaml'), [
-	'dsh-proxy:',
-	'  enabled: true',
-	`  proxy: ${proxyUrl}`,
-	'  noProxy:',
-	'    - example.invalid',
-	''
-].join('\n'));
-
 writeFileSync(join(profileDir, 'package.json'), JSON.stringify({
 	name: PROFILE,
 	private: true,
@@ -70,7 +62,15 @@ writeFileSync(join(profileDir, 'package.json'), JSON.stringify({
 	}
 }, null, '\t'));
 
-writeFileSync(join(profileDir, 'cordis.patch.yml'), '[]\n');
+writeFileSync(join(profileDir, 'cordis.patch.yml'), [
+	'- id: dsh-proxy',
+	'  config:',
+	'    enabled: true',
+	`    proxy: ${proxyUrl}`,
+	'    noProxy:',
+	'      - example.invalid',
+	''
+].join('\n'));
 
 // Minimal node_modules: the plugin package plus its runtime deps.
 mkdirSync(join(profileDir, 'node_modules', '@tr1v3r'), { recursive: true });
@@ -95,13 +95,13 @@ cpSync(
 process.env.DSH_HOME = HOME;
 process.env.DEEPSEEK_API_KEY ??= 'probe-unused';
 
-const { boot, loadProfile, composeEntries, loadLayeredEnv, healProfilesModuleFallback } = await import(APP_BOOT);
+const { boot, loadProfile, composeEntries, loadLayeredEnv, createRuntimeResolution, PluginPackages } = await import(APP_BOOT);
 const { DSH_LAUNCH_ENVIRONMENT_KEY } = await import(LAUNCH_ENV);
 const { provideCmdline } = await import(CMDLINE);
 
 const installAnchor = `${DSH_ROOT}/package.json`;
 const profile = loadProfile('dsh', PROFILE, installAnchor, HOME);
-await healProfilesModuleFallback({ installAnchor, profile });
+const resolution = await createRuntimeResolution({ installAnchor, profile, home: HOME });
 writeFileSync(join(profile.dir, 'cordis.yml'), [
 	'# dsh profile root — an empty entry list. The tree is composed as patches:',
 	'# each bundle in package.json\'s dsh.profile.bundles, then cordis.patch.yml, then any',
@@ -111,15 +111,27 @@ writeFileSync(join(profile.dir, 'cordis.yml'), [
 ].join('\n'));
 const bundlePatches = profile.layers.flatMap((layer) => layer.patches);
 const patchLayers = [bundlePatches, profile.patches];
-console.log('composed entries:', composeEntries(structuredClone(patchLayers)).map((entry) => entry.id ?? `+${entry.name}`).join(', '));
+const composed = composeEntries(structuredClone(patchLayers));
+if (!composed.some((entry) => entry.id === 'dsh-proxy')) throw new Error('probe: proxy entry is missing from the profile');
 
 const baseline = getGlobalDispatcher();
-const ctx = await boot('dsh', join(profile.dir, 'cordis.yml'), structuredClone(patchLayers.flat()), (hostCtx) => {
+const ctx = await boot('dsh', join(profile.dir, 'cordis.yml'), structuredClone(patchLayers.flat()), async (hostCtx) => {
+	hostCtx.provide('profileContext', {
+		name: PROFILE,
+		dir: profile.dir,
+		patchPath: profile.patchPath,
+		installAnchor,
+		startedBundles: profile.layers.map((layer) => layer.packageName),
+		cwd: process.cwd(),
+		home: HOME,
+		overlays: []
+	});
 	hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, loadLayeredEnv('dsh'));
+	await hostCtx.plugin(PluginPackages, { resolution });
 	provideCmdline(hostCtx, {
 		args: [],
 		exit: () => {},
-		ready: { service: () => {} }
+		ready: { onReady: (callback) => { callback(); return () => {}; } }
 	});
 });
 
@@ -147,16 +159,10 @@ function check(label, condition, detail) {
 }
 
 try {
-	// --- diagnostics: is the section registered and resolved?
-	const described = ctx.get('settings')?.describe?.() ?? [];
-	console.log('probe: settings namespaces:', described.map((row) => `${row.ns}=${JSON.stringify(row.value)}`).join(' | ') || '(none)');
-	const allEntries = [...ctx.loader.entries()];
-	const includeEntry = allEntries[0];
-	console.log('probe: loader entries:', allEntries.length, allEntries.slice(-5).map((row) => JSON.stringify({ id: row.options?.id, name: row.options?.name })));
-	console.log('probe: include subtree store:', Object.keys(includeEntry?.subtree?.store ?? {}));
-	console.log('probe: include fiber state:', includeEntry?.fiber?.state, 'subtree entries:', [...(includeEntry?.subtree?.entries() ?? [])].map((row) => row.options?.id));
-	console.log('probe: services with settings:', Object.keys(ctx.get('settings') ?? {}).slice(0, 5));
-
+	const settings = ctx.get('settings');
+	const described = settings.describe();
+	const section = described.find((row) => row.ns === 'dsh-proxy');
+	check('settings exposes the live entry', Boolean(section) && section.autoGenerate === false);
 	await waitFor('proxy dispatcher installed', isOurs);
 	check('dispatcher switched to a dsh-proxy dispatcher at boot', isOurs(), dispatcherName());
 
@@ -165,23 +171,28 @@ try {
 	const body = await (await fetch(originUrl)).text();
 	check('fetch routed through settings proxy', body === 'proxy-ok' && proxyHits.length === 1);
 
-	// ---- hot switch off
-	writeFileSync(join(HOME, 'settings.yaml'), 'dsh-proxy:\n  enabled: false\n');
+	// ---- hot switch off through the same Settings API used by the Web UI
+	await settings.update('dsh-proxy', { mode: 'direct' });
 	await waitFor('dispatcher restored', () => getGlobalDispatcher() === baseline);
 	const direct = await (await fetch(originUrl)).text();
 	check('hot-off: fetch direct', direct === 'origin-ok' && originHits.length === 1 && proxyHits.length === 1);
 	check('hot-off: env cleared', process.env.HTTP_PROXY === undefined);
 
 	// ---- hot switch on again (proxy port unchanged)
-	writeFileSync(join(HOME, 'settings.yaml'), `dsh-proxy:\n  enabled: true\n  proxy: ${proxyUrl}\n`);
+	await settings.update('dsh-proxy', { mode: 'manual' });
 	await waitFor('dispatcher re-installed', isOurs);
 	const again = await (await fetch(originUrl)).text();
 	check('hot-on: fetch via proxy again', again === 'proxy-ok' && proxyHits.length === 2);
 
 	// ---- settings describe sees the section
-	const describeAgain = ctx.get('settings')?.describe?.() ?? [];
-	const section = describeAgain.find((row) => row.ns === 'dsh-proxy');
-	check('settings describe exposes dsh-proxy', Boolean(section), JSON.stringify(section?.value));
+	const updated = settings.describe().find((row) => row.ns === 'dsh-proxy');
+	check('settings describe sees the new mode', updated?.value.mode === 'manual');
+	// ---- editing the profile patch directly follows the same live config path
+	writeFileSync(profile.patchPath, '- id: dsh-proxy\n  config:\n    mode: direct\n');
+	await waitFor('profile patch switched to direct', () => getGlobalDispatcher() === baseline);
+	writeFileSync(profile.patchPath, `- id: dsh-proxy\n  config:\n    mode: manual\n    proxy: ${proxyUrl}\n`);
+	await waitFor('profile patch switched back to manual', isOurs);
+	check('profile patch edits hot-reload the proxy', settings.describe().find((row) => row.ns === 'dsh-proxy')?.value.mode === 'manual');
 
 	console.log('probe: ALL PASS — runtime switching verified inside a real DSH boot');
 } finally {

@@ -6,15 +6,15 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-en.svg)](https://dsh.market/)
 
-![demo: editing settings.yaml reroutes every outbound request instantly](docs/assets/proxy-switch-demo.gif)
+![demo: changing proxy modes reroutes outbound requests instantly](docs/assets/proxy-switch-demo.gif)
 
 `@tr1v3r/dsh-proxy` is a DeepSeek Harness plugin that routes **every
 in-process outbound request** — LLM providers, `web_search` / `web_fetch`,
 streamable-http MCP — through an HTTP(S) CONNECT or SOCKS5 proxy, and lets
 you **flip the proxy on, off, or to another server at runtime**, with zero
 restarts, either from the Web Settings → General → Network proxy control or
-by editing one section of `$DSH_HOME/settings.yaml` (hot-reloaded).
-The demo above is a real recording: `node scripts/demo.mjs` after install.
+by editing the `dsh-proxy` entry in the profile's `cordis.patch.yml` (hot-reloaded).
+The demo above shows the routing engine: `node scripts/demo.mjs` after install.
 
 ## How it works
 
@@ -31,8 +31,8 @@ The plugin owns that slot:
   bypasses everything; a leading dot or `*.` prefix is accepted as a synonym
   of the bare entry). In `manual` mode, ambient `NO_PROXY`/`HTTP_PROXY` env
   vars are deliberately ignored by the dispatchers — exported env only steers
-  child processes, so in-process routing is fully determined by the settings
-  section. `system` mode is the opposite: it follows the ambient proxy —
+  child processes, so in-process routing is fully determined by the profile
+  entry config. `system` mode is the opposite: it follows the ambient proxy —
   `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` env vars, falling back to
   the macOS System Settings proxy (`scutil --proxy`) — re-detected each time
   the section is applied, not continuously polled.
@@ -82,7 +82,7 @@ In the Web profile, use the icon-only **Proxy status** control in the sidebar fo
 (above Settings) to check the selected mode on hover/focus or in its menu and switch
 between Direct, Follow system, and Manual proxy
 without leaving the main screen. The menu uses the same settings namespace and updates
-when `settings.yaml` changes externally. The tooltip shows the manual endpoint with
+when the profile patch changes externally. The tooltip shows the manual endpoint with
 credentials masked; Follow system reflects the *selected mode*, not a guarantee that
 the host detected a usable proxy (consult DSH logs for the effective route). A missing
 manual URL cannot be activated from the quick menu. To edit the URL, bypass hosts, or
@@ -93,7 +93,7 @@ Follow system, or Manual proxy from the dropdown; mode changes apply immediately
 without an Apply button. In Manual mode, enter an HTTP(S)/SOCKS5 URL and bypass
 hosts (one per line); text fields save on blur, while the child-process env switch
 saves on change. Invalid URLs are not saved. The UI writes the **same** `dsh-proxy`
-settings section. Editing the file remains supported and refreshes the UI; a
+profile entry. Editing the profile patch remains supported and refreshes the UI; a
 revision fence prevents a stale edit from silently overwriting an external change.
 
 ![Manual proxy settings in the DSH Web interface](docs/assets/proxy-manual-settings.png)
@@ -102,19 +102,23 @@ The selector offers all three routing modes:
 
 ![Network proxy mode menu: Direct, Follow system, Manual proxy](docs/assets/proxy-modes.png)
 
-Alternatively, edit `~/.config/dsh/settings.yaml` (hot-reloaded, no restart). One `mode` key
-picks the routing strategy — `direct`, `system`, or `manual`:
+Alternatively, add this override to
+`~/.config/dsh/profiles/<name>/cordis.patch.yml` (hot-reloaded, no restart).
+If the file already contains entries, append this item to the YAML list, or edit
+the existing `dsh-proxy` item.
+The `mode` key picks `direct`, `system`, or `manual`:
 
 ```yaml
-dsh-proxy:
-  mode: manual                           # direct | system | manual
-  proxy: socks5://127.0.0.1:1080         # manual only — http://…, https://…,
-                                         # socks5://user:pass@host:1080, socks5h://…
-  noProxy:                               # manual only — optional bypass list
-    - localhost
-    - .internal.example
-    - registry.corp:443
-  exportEnv: true                        # manual only — also set HTTP(S)_PROXY for children
+- id: dsh-proxy
+  config:
+    mode: manual                           # direct | system | manual
+    proxy: socks5://127.0.0.1:1080         # manual only — http://…, https://…,
+                                           # socks5://user:pass@host:1080, socks5h://…
+    noProxy:                               # manual only — optional bypass list
+      - localhost
+      - .internal.example
+      - registry.corp:443
+    exportEnv: true                        # manual only — also set HTTP(S)_PROXY for children
 ```
 
 | `mode` | behavior |
@@ -127,9 +131,10 @@ dsh-proxy:
 `manual`/`direct` when `mode` is omitted:
 
 ```yaml
-dsh-proxy:
-  enabled: true                          # ≡ mode: manual
-  proxy: http://127.0.0.1:7890
+- id: dsh-proxy
+  config:
+    enabled: true                          # ≡ mode: manual
+    proxy: http://127.0.0.1:7890
 ```
 
 Every save re-routes immediately. The plugin logs each switch:
@@ -164,7 +169,7 @@ experimental upstream.
 ```sh
 npm install
 npm test                      # unit + local e2e: HTTP proxy, SOCKS5, noProxy, hot-switch, env
-node scripts/boot-probe.mjs   # boots a real DSH tree and hot-flips settings.yaml
+node scripts/boot-probe.mjs   # boots a real DSH tree and switches through Settings
 ```
 
 ## License

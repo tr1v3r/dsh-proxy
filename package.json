@@ -1,7 +1,7 @@
 {
   "name": "@tr1v3r/dsh-proxy",
   "version": "0.2.1",
-  "description": "Runtime-switchable outbound proxy for the DeepSeek Harness: hot-reload HTTP(S)/SOCKS5 routing for every global-fetch request via a settings section.",
+  "description": "Runtime-switchable outbound proxy for the DeepSeek Harness: hot-reload HTTP(S)/SOCKS5 routing for every global-fetch request via live profile config.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -53,15 +53,15 @@
       "platform": "web"
     },
     "engines": {
-      "dsh": ">=0.1.2-rc.1"
+      "dsh": ">=0.1.7-rc.1"
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/schemastery": "^3.18.4"
   },
   "dependencies": {
     "undici": "^8.10.0"

@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 /** Routing modes the section accepts. */
 export type ProxyModeValue = 'direct' | 'system' | 'manual';
 
-/** Resolved shape of the `dsh-proxy` settings section / entry config. */
+/** Resolved shape of the `dsh-proxy` profile entry config. */
 export interface ProxySection {
 	mode?: ProxyModeValue;
 	enabled?: boolean;
@@ -63,4 +63,4 @@ export function detectSystemProxy(
 	env?: Record<string, string | undefined>
 ): SystemProxySpec | null;
 export function createEngine(logger: unknown): SwitchEngine;
-export function apply(ctx: Context, config?: ProxySection): void;
+export function apply(ctx: Context, config?: ProxySection | { get(): ProxySection }): void;

@@ -14,6 +14,8 @@ import {
 	resolveMode,
 	resolveConfig,
 	createEngine,
+	Config,
+	apply as applyPlugin,
 	PROXY_ENV_KEYS
 } from '../lib/index.js';
 
@@ -129,6 +131,32 @@ async function startSocks5() {
 }
 
 /* ------------------------------------------------------------ unit: matcher */
+
+test('DSH 0.1.7 Settings exposes the volatile entry and re-applies it on updates', (t) => {
+	isolateProxyEnv(t);
+	assert.equal(Config.meta.volatile, true);
+	const baseline = getGlobalDispatcher();
+	let current = { mode: 'manual', proxy: 'http://127.0.0.1:9', exportEnv: false };
+	const handlers = new Map();
+	const fiber = {};
+	let presentation;
+	const ctx = {
+		fiber,
+		on: (event, callback) => handlers.set(event, callback),
+		inject: (_services, callback) => callback({
+			effect: (register) => register(),
+			settings: { configure: (policy, owner) => { presentation = { policy, owner }; return () => {}; } }
+		})
+	};
+	t.after(() => handlers.get('dispose')?.());
+
+	applyPlugin(ctx, { get: () => current });
+	assert.deepEqual(presentation, { policy: { auto: false }, owner: fiber });
+	assert.notEqual(getGlobalDispatcher(), baseline);
+	current = { mode: 'direct', exportEnv: false };
+	handlers.get('loader/volatile-update')();
+	assert.equal(getGlobalDispatcher(), baseline);
+});
 
 test('matchesNoProxy mirrors undici semantics plus suffix extensions', () => {
 	const rules = ['localhost', '.internal.example', 'pin.exact:8443', '*.wild.test'];
