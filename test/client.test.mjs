@@ -21,7 +21,7 @@ function mountClient(react = { createElement: (...args) => args }) {
 	return registration.factory((id) => {
 		if (id === 'react') return react;
 		if (id === '@deepseek-ai/dsh-client-ui-primitives') return {
-			Menu: () => {}, Tooltip: () => {}, IconChevronDownOutline14: () => {}, IconGlobeOutline14: () => {}
+			Menu: () => {}, Tooltip: () => {}, IconChevronDownOutlineRegular: () => {}, IconGlobeOutlineRegular: () => {}
 		};
 		assert.fail(`unexpected browser import: ${id}`);
 	});
@@ -38,14 +38,14 @@ test('Web client is discoverable by the DSH module loader', () => {
 
 test('client registers a General settings row backed by the existing namespace', () => {
 	const client = mountClient();
-	assert.deepEqual(Array.from(client.inject), ['slots', 'locale', 'settingsScope']);
+	assert.deepEqual(Array.from(client.inject), ['slots', 'locale', 'configForms']);
 	let bound;
 	const rows = new Map();
 	const scope = { getSnapshot: () => ({ status: 'ready', value: { mode: 'direct' } }) };
 	const ctx = {
 		effect: (callback) => callback(),
 		locale: { register: () => () => {}, bind: () => (key) => key },
-		settingsScope: { bind: (spec) => { bound = spec.namespace; return scope; } },
+		configForms: { get: (entryId) => { bound = entryId; return scope; } },
 		slots: {
 			inject: (name, callback) => { assert.ok(['settings.general.item', 'sidebar.footer.action'].includes(name)); callback(); },
 			register: (options, component) => { rows.set(options.name, { options, component }); }
@@ -62,7 +62,7 @@ test('client registers a General settings row backed by the existing namespace',
 
 test('proxy mode uses the DSH menu primitive with no Apply button', () => {
 	assert.match(source, /React\.createElement\(Menu, \{/);
-	assert.match(source, /React\.createElement\(IconChevronDownOutline14/);
+	assert.match(source, /React\.createElement\(IconChevronDownOutlineRegular/);
 	assert.match(source, /onSelect: \(mode\) => \{ setOpen\(false\); changeMode\(mode\); \}/);
 	assert.doesNotMatch(source, /React\.createElement\('select'|dshProxyApply|type: 'submit'/);
 });
@@ -84,7 +84,10 @@ function quickHarness(initial) {
 	let cursor = 0;
 	const effects = [];
 	const react = {
-		createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+		createElement: (type, props, ...children) => {
+			assert.notEqual(type, undefined, 'DSH UI primitive must be exported');
+			return { type, props: { ...props, children } };
+		},
 		useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 		useCallback: (fn) => fn,
 		useState: (initialState) => {
@@ -97,13 +100,18 @@ function quickHarness(initial) {
 	};
 	const client = mountClient(react);
 	let quick;
+	let row;
 	client.apply({
 		effect: () => {},
 		locale: { register: () => () => {}, bind: () => (key, vars) => vars?.endpoint ? `${key}: ${vars.endpoint}` : key },
-		settingsScope: { bind: () => scope },
-		slots: { inject: (_name, fn) => fn(), register: (options, component) => { if (options.name === 'sidebar.footer.action') quick = component; } }
+		configForms: { get: () => scope },
+		slots: { inject: (_name, fn) => fn(), register: (options, component) => {
+			if (options.name === 'sidebar.footer.action') quick = component;
+			if (options.name === 'settings.general.item') row = component;
+		} }
 	});
 	const render = (wide = true) => { cursor = 0; return quick({ scope, t: (key, vars) => vars?.endpoint ? `${key}: ${vars.endpoint}` : key, wide }); };
+	const renderRow = () => { cursor = 0; return row({ scope, t: (key) => key }); };
 	const walk = (tree, predicate) => {
 		if (!tree || typeof tree !== 'object') return null;
 		if (predicate(tree)) return tree;
@@ -114,10 +122,16 @@ function quickHarness(initial) {
 		return walk(tree.props?.anchor, predicate);
 	};
 	return {
-		render, walk, calls, pending, effects, scope,
+		render, renderRow, walk, calls, pending, effects, scope,
 		set: (next) => { snapshot = next; changed(); }
 	};
 }
+
+test('both Web slots render with the primitives exported by DSH 0.1.7', () => {
+	const h = quickHarness(snapshot('direct'));
+	assert.equal(h.render().props.className, 'dshProxyQuick');
+	assert.equal(h.renderRow().props.className, 'dshProxyRow');
+});
 
 function snapshot(mode, proxy = '', revision = 1, writable = true) {
 	return { status: 'ready', value: { mode, proxy }, user: { mode }, revision, writable };
@@ -182,7 +196,7 @@ test('quick action centres itself in the sidebar footer row', () => {
 	// 16px icon in the wide column and 18px in the rail.
 	assert.match(source, /\.dshProxyQuick\{[^}]*align-self:center[^}]*\}/);
 	assert.doesNotMatch(source, /\.dshProxyQuick\{[^}]*margin:8px/);
-	assert.match(source, /IconGlobeOutline14, \{ size: wide \? 16 : 18 \}/);
+	assert.match(source, /IconGlobeOutlineRegular, \{ size: wide \? 16 : 18 \}/);
 });
 
 test('manual edits save on blur and invalid URLs cannot be committed', () => {
