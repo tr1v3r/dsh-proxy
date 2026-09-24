@@ -6,14 +6,14 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-zh.svg)](https://dsh.market/)
 
-![演示：编辑 settings.yaml 即时改写全部出站路由](docs/assets/proxy-switch-demo.gif)
+![演示：切换代理模式即时改写出站路由](docs/assets/proxy-switch-demo.gif)
 
 `@tr1v3r/dsh-proxy` 是 DeepSeek Harness 插件，把进程内**所有出站请求**——
 LLM 提供方、`web_search` / `web_fetch`、streamable-http MCP——经由
 HTTP(S) CONNECT 或 SOCKS5 代理转发，并且支持**运行时随时开关、随时换代理**：
-可以在 Web「设置 → 通用 → 网络代理」中操作，也可以继续编辑
-`$DSH_HOME/settings.yaml` 的同一个分节（watcher 热加载），全程零重启。
-上面的动图是真实录制，安装后可运行 `node scripts/demo.mjs` 复现。
+可以在 Web「设置 → 通用 → 网络代理」中操作，也可以编辑 profile 的
+`cordis.patch.yml` 中的 `dsh-proxy` 条目（热加载），全程零重启。
+上面的动图展示路由引擎，安装后可运行 `node scripts/demo.mjs` 复现。
 
 ## 工作原理
 
@@ -27,7 +27,7 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
   语义完全一致（undici 风格：裸条目匹配主机及点边界子域；`host:port` 锁定
   端口；`*` 全部直连；前导点 / `*.` 前缀视同裸条目等价写法）。`manual` 模式
   下 dispatcher 刻意忽略环境变量里的 `NO_PROXY`/`HTTP_PROXY`——导出的 env
-  只引导子进程，进程内路由完全由 settings 分节决定；`system` 模式则相反，
+  只引导子进程，进程内路由完全由 profile 条目配置决定；`system` 模式则相反，
   跟随环境代理——`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`，环境变量
   缺失时再回退到 macOS 系统设置里的网络代理（`scutil --proxy`）——每次分节
   应用时重新探测一次，而非持续轮询）
@@ -70,8 +70,8 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
 ## 使用
 
 Web 主界面侧栏底部（设置上方）只有「代理状态」图标；悬浮、聚焦或打开菜单可查看
-当前选择的模式，并在直连、跟随系统和手动代理之间切换。它与设置页共用同一个配置分节，外部编辑
-`settings.yaml` 后也会同步更新；悬浮提示中的手动代理地址会隐藏用户名和密码。
+当前选择的模式，并在直连、跟随系统和手动代理之间切换。它与设置页共用同一个配置条目，外部编辑
+profile 的 `cordis.patch.yml` 后也会同步更新；悬浮提示中的手动代理地址会隐藏用户名和密码。
 「跟随系统」表示**已选择的模式**，不保证系统探测到了可用代理；实际出口以 DSH
 日志为准。没有有效代理地址时，快捷菜单不会启用手动模式。要编辑地址、直连规则
 或子进程开关，请打开「设置 → 通用 → 网络代理」。
@@ -79,8 +79,8 @@ Web 主界面侧栏底部（设置上方）只有「代理状态」图标；悬�
 Web profile 也可打开「设置 → 通用 → 网络代理」：从下拉列表选择直连、跟随系统或手动代理，
 选择后立即生效，无需「应用」按钮。手动模式可填写 HTTP(S)/SOCKS5 URL、直连地址
 （每行一个）和子进程环境变量开关；URL 与直连地址失焦后保存，开关切换后立即保存，
-无效 URL 不写入文件。图形界面写入**同一个** `dsh-proxy` 设置分节，文件配置仍然完整保留：
-直接编辑 `~/.config/dsh/settings.yaml` 会热加载并同步到图形界面；并发修改由修订号保护，
+无效 URL 不写入文件。图形界面写入**同一个** `dsh-proxy` 配置条目，文件配置仍然完整保留：
+直接编辑 profile 的 `cordis.patch.yml` 会热加载并同步到图形界面；并发修改由修订号保护，
 避免覆盖新值。
 
 ![DSH Web 手动代理设置界面](docs/assets/proxy-manual-settings.png)
@@ -89,19 +89,22 @@ Web profile 也可打开「设置 → 通用 → 网络代理」：从下拉列�
 
 ![网络代理模式菜单：直连、跟随系统、手动代理](docs/assets/proxy-modes.png)
 
-也可以只编辑 `~/.config/dsh/settings.yaml`（热加载，立即生效）。一个 `mode` 键即可在
-三种模式间切换——`direct`（直连）、`system`（跟随系统）、`manual`（手动）：
+也可以在 `~/.config/dsh/profiles/<name>/cordis.patch.yml` 添加如下条目
+（热加载，立即生效）；如果文件已有条目，就追加到现有 YAML 列表中；已有
+`dsh-proxy` 条目时直接修改该条目。`mode` 可在
+`direct`（直连）、`system`（跟随系统）、`manual`（手动）间切换：
 
 ```yaml
-dsh-proxy:
-  mode: manual                           # direct | system | manual
-  proxy: socks5://127.0.0.1:1080         # 仅 manual——http://…、https://…、
-                                         # socks5://user:pass@host:1080、socks5h://…
-  noProxy:                               # 仅 manual——可选分流规则
-    - localhost
-    - .internal.example
-    - registry.corp:443
-  exportEnv: true                        # 仅 manual——同步设置子进程的 HTTP(S)_PROXY
+- id: dsh-proxy
+  config:
+    mode: manual                           # direct | system | manual
+    proxy: socks5://127.0.0.1:1080         # 仅 manual——http://…、https://…、
+                                           # socks5://user:pass@host:1080、socks5h://…
+    noProxy:                               # 仅 manual——可选分流规则
+      - localhost
+      - .internal.example
+      - registry.corp:443
+    exportEnv: true                        # 仅 manual——同步设置子进程的 HTTP(S)_PROXY
 ```
 
 | `mode` | 行为 |
@@ -114,9 +117,10 @@ dsh-proxy:
 `manual`/`direct`：
 
 ```yaml
-dsh-proxy:
-  enabled: true                          # ≡ mode: manual
-  proxy: http://127.0.0.1:7890
+- id: dsh-proxy
+  config:
+    enabled: true                          # ≡ mode: manual
+    proxy: http://127.0.0.1:7890
 ```
 
 每次保存立即重路由。插件会记录每次切换：
@@ -150,7 +154,7 @@ agent 上游目前标注 experimental。
 ```sh
 npm install
 npm test                      # 单测 + 本地 e2e：HTTP 代理、SOCKS5、noProxy、热切换、env
-node scripts/boot-probe.mjs   # boot 真实 DSH 插件树，热翻转 settings.yaml 验证
+node scripts/boot-probe.mjs   # boot 真实 DSH 插件树，通过 Settings 热切换验证
 ```
 
 ## 许可

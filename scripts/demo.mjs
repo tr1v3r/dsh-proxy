@@ -2,12 +2,11 @@
  * Terminal demo for @tr1v3r/dsh-proxy — real dispatcher switching.
  *
  * Boots a local origin server, an HTTP proxy, and a SOCKS5 proxy, then walks
- * through settings.yaml edits, applying to the plugin's own createEngine the
- * same resolved section the dsh settings seam delivers on every hot reload
- * (the full watcher path is covered by scripts/boot-probe.mjs). Every fetch
+ * through edits to a demo-only YAML file, applying the resolved values to
+ * createEngine (the real Settings path is covered by scripts/boot-probe.mjs). Every fetch
  * below is a real globalThis.fetch through the real global dispatcher slot.
  *
- * Usage: node scripts/demo.mjs   (writes its settings.yaml under os.tmpdir())
+ * Usage: node scripts/demo.mjs   (writes its demo.yaml under os.tmpdir())
  */
 
 import http from 'node:http';
@@ -20,7 +19,7 @@ import { createEngine } from '../lib/index.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(join(tmpdir(), 'dsh-proxy-demo'), { recursive: true });
-const SETTINGS = join(tmpdir(), 'dsh-proxy-demo', 'settings.yaml');
+const SETTINGS = join(tmpdir(), 'dsh-proxy-demo', 'demo.yaml');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const listen = (server) => new Promise((r) => server.listen(0, '127.0.0.1', () => r(server)));
@@ -92,12 +91,11 @@ await listen(socksProxy);
 const PROXY_A = `http://127.0.0.1:${httpProxy.address().port}`;
 const PROXY_B = `socks5://127.0.0.1:${socksProxy.address().port}`;
 
-/* --------------------------------------------- settings.yaml → engine */
+/* --------------------------------------------- demo.yaml → engine */
 
 /**
- * Demo-only parser for the keys this script writes (the real plugin parses
- * the file with the dsh settings seam; that machinery is not imported here
- * to keep the demo dependency-free).
+ * Demo-only parser for the keys this script writes. DSH 0.1.7 reads the real
+ * proxy configuration from its profile entry through the Settings API.
  */
 function parseDemoSection(text) {
 	const section = {};
@@ -148,26 +146,26 @@ function banner(line) {
 
 /* --------------------------------------------------------------- scene */
 
-log('▲ dsh-proxy demo — globalThis.fetch rerouted by editing settings.yaml');
-banner('── settings.yaml: mode: direct ────────────────────────────────');
+log('▲ dsh-proxy routing demo — globalThis.fetch rerouted by editing demo.yaml');
+banner('── demo.yaml: mode: direct ────────────────────────────────');
 applyFrom('dsh-proxy:\n  mode: direct\n');
 await probe();
 
-banner(`── settings.yaml: mode: manual, proxy: http://…:${httpProxy.address().port} ──`);
+banner(`── demo.yaml: mode: manual, proxy: http://…:${httpProxy.address().port} ──`);
 applyFrom(`dsh-proxy:\n  mode: manual\n  proxy: ${PROXY_A}\n`);
 await probe();
 
-banner(`── settings.yaml: mode: manual, proxy: socks5://…:${socksProxy.address().port} ──`);
+banner(`── demo.yaml: mode: manual, proxy: socks5://…:${socksProxy.address().port} ──`);
 applyFrom(`dsh-proxy:\n  mode: manual\n  proxy: ${PROXY_B}\n`);
 await probe();
 
-banner(`── settings.yaml: mode: system  (env HTTP_PROXY → HTTP proxy) ──`);
+banner(`── demo.yaml: mode: system  (env HTTP_PROXY → HTTP proxy) ──`);
 process.env.HTTP_PROXY = PROXY_A;
 applyFrom('dsh-proxy:\n  mode: system\n');
 await probe();
 delete process.env.HTTP_PROXY;
 
-banner('── settings.yaml: mode: direct ────────────────────────────────');
+banner('── demo.yaml: mode: direct ────────────────────────────────');
 applyFrom('dsh-proxy:\n  mode: direct\n');
 await probe();
 
