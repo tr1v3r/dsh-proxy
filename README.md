@@ -44,7 +44,25 @@ servers) follow the same proxy. Variables you set yourself at boot are never
 clobbered, and everything is restored on disable/unload.
 
 Retired dispatchers close gracefully and are force-destroyed after 30 s, so
-switching away actually tears down old keep-alive connections.
+switching away actually tears down old keep-alive connections. In-flight
+requests get that same 30-second grace period (`RETIRE_DESTROY_MS`); a
+streaming response that is still running ~30 s after you flip the switch is
+interrupted when the retired dispatcher's sockets are force-destroyed.
+
+## Credential security
+
+Proxy URLs with embedded `user:pass@` credentials are stored **in
+plaintext** on disk — in the profile's `cordis.patch.yml` and the settings
+persistence — and are protected only by file permissions. With the default
+`exportEnv: true`, the credentials are also propagated into the dsh process
+as `HTTP(S)_PROXY` env vars, so every child process spawned afterwards
+carries them (`ps -E` on Linux/macOS or `/proc/<PID>/environ` can reveal
+them to the same user; other users generally need root or comparable
+privileges to read them, depending on platform permission settings).
+No new config option is introduced for this; if
+your credentials are sensitive, prefer pointing dsh-proxy at a local,
+unauthenticated proxy entry (e.g. `http://127.0.0.1:7890` in front of an
+authenticated upstream) instead of embedding `user:pass@` in the URL.
 
 ## Install
 
@@ -55,7 +73,7 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
    ```json
    {
      "dependencies": {
-       "@tr1v3r/dsh-proxy": "^0.2.3"
+       "@tr1v3r/dsh-proxy": "^0.2.4"
      },
      "dsh": {
        "profile": {
@@ -118,6 +136,7 @@ The `mode` key picks `direct`, `system`, or `manual`:
       - localhost
       - .internal.example
       - registry.corp:443
+    bypassLoopback: true                   # default — loopback stays direct (false to proxy it)
     exportEnv: true                        # manual only — also set HTTP(S)_PROXY for children
 ```
 
@@ -157,6 +176,7 @@ ambient env/OS proxy, so it never writes those env vars itself.)
 | `web_search` / `web_fetch` | ✅ |
 | streamable-http MCP servers | ✅ |
 | stdio MCP servers, bash-tool subprocesses (`curl`, `git`, …) | ✅ via exported env, for processes spawned after the switch |
+| Loopback destinations (`localhost`, `127.0.0.0/8`, `::1`, `0.0.0.0`) | ❌ direct by default; set `bypassLoopback: false` to proxy them |
 | pi-ai Bedrock route | ⚠️ AWS SDK manages its own proxying (`HTTPS_PROXY` env is honored there) |
 | Built-in browser host / browser downloads | ❌ separate process, configure the browser itself |
 
@@ -171,6 +191,26 @@ npm install
 npm test                      # unit + local e2e: HTTP proxy, SOCKS5, noProxy, hot-switch, env
 node scripts/boot-probe.mjs   # boots a real DSH tree and switches through Settings
 ```
+
+The boot probe needs a **DSH >= 0.1.7-rc.1** installation (it uses the
+`createRuntimeResolution` / `PluginPackages` exports that older versions
+lack — with dsh 0.1.5.x it fails with
+`TypeError: createRuntimeResolution is not a function`). You don't have to
+upgrade your global install: point `DSH_ROOT` at any matching package tree,
+for example one installed into a scratch directory:
+
+```sh
+npm install --prefix /tmp/dsh-probe-root @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT=/tmp/dsh-probe-root node scripts/boot-probe.mjs
+```
+
+Run both lines from this repository's root. The scratch install hoists the
+dependencies to `/tmp/dsh-probe-root/node_modules`, so `DSH_ROOT` points at
+the install anchor directory `/tmp/dsh-probe-root` itself — not at the
+package directory.
+
+Without `DSH_ROOT`, the probe resolves the `dsh` found on `PATH` and expects
+that installation to already satisfy the version requirement.
 
 ## License
 

@@ -204,3 +204,25 @@ test('manual edits save on blur and invalid URLs cannot be committed', () => {
 	assert.match(source, /!proxyValid\(draft\.proxy\.trim\(\)\)\) return/);
 	assert.match(source, /await scope\.mutate\(/);
 });
+
+test('COPY stays bilingual and honest: coverage, immediate effect, loopback, logs for system', () => {
+	let copy = null;
+	mountClient().apply({
+		effect: (callback) => callback(),
+		locale: { register: (_name, value) => { copy = value; return () => {}; }, bind: () => (key) => key },
+		configForms: { get: () => ({ getSnapshot: () => ({ status: 'ready', value: { mode: 'direct' } }) }) },
+		slots: { inject: () => {}, register: () => {} }
+	});
+	assert.ok(copy && copy.zh && copy.en);
+	assert.deepEqual(Object.keys(copy.zh).sort(), Object.keys(copy.en).sort());
+	for (const locale of ['zh', 'en']) {
+		assert.match(copy[locale].description, /127\.0\.0\.1/, `${locale} description mentions loopback`);
+	}
+	assert.match(copy.zh.description, /保存即生效/);
+	assert.match(copy.zh.description, /默认直连/);
+	assert.match(copy.en.description, /no restart/i);
+	assert.match(copy.en.description, /direct by default/i);
+	// systemUnknown keeps deferring to DSH logs — no live-status claim.
+	assert.match(copy.zh.systemUnknown, /以 DSH 日志为准/);
+	assert.match(copy.en.systemUnknown, /DSH logs/);
+});

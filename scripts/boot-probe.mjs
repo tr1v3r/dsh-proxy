@@ -19,9 +19,9 @@ const DSH_ROOT = process.env.DSH_ROOT ?? dirname(dirname(realpathSync(execFileSy
 const APP_BOOT = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js`;
 const LAUNCH_ENV = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-launch-environment/lib/index.js`;
 const CMDLINE = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-cmdline/lib/index.js`;
-const PLUGIN_DIR = new URL('..', import.meta.url).pathname;
+const PLUGIN_DIR = process.env.PROBE_PLUGIN_DIR ?? new URL('..', import.meta.url).pathname;
 
-const HOME = '/tmp/dsh-proxy-boot/home';
+const HOME = process.env.PROBE_HOME ?? '/tmp/dsh-proxy-boot/home';
 const PROFILE = 'proxyprobe';
 
 /* ------------------------------------------------- local origin + proxy */
@@ -69,6 +69,10 @@ writeFileSync(join(profileDir, 'cordis.patch.yml'), [
 	`    proxy: ${proxyUrl}`,
 	'    noProxy:',
 	'      - example.invalid',
+	// The probe's origin and proxy are both loopback addresses: the legacy
+	// proxy-routing assertions below only hold with the loopback bypass off
+	// (the new-semantics block at the end re-enables and verifies the default).
+	'    bypassLoopback: false',
 	''
 ].join('\n'));
 
@@ -147,7 +151,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(description, predicate, timeoutMs = 15000) {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		if (predicate()) return;
+		if (await predicate()) return;
 		await sleep(200);
 	}
 	throw new Error(`probe: timed out waiting for ${description} (dispatcher=${dispatcherName()})`);
@@ -193,6 +197,21 @@ try {
 	writeFileSync(profile.patchPath, `- id: dsh-proxy\n  config:\n    mode: manual\n    proxy: ${proxyUrl}\n`);
 	await waitFor('profile patch switched back to manual', isOurs);
 	check('profile patch edits hot-reload the proxy', settings.describe().find((row) => row.ns === 'dsh-proxy')?.value.mode === 'manual');
+
+	// ---- new loopback semantics through the same live Settings API
+	const fetchText = async (url) => (await (await fetch(url)).text());
+	await settings.update('dsh-proxy', { bypassLoopback: true, noProxy: ['example.invalid'] });
+	await waitFor('default loopback bypass active', async () => (await fetchText(originUrl)) === 'origin-ok');
+	check('default bypassLoopback=true: loopback fetch stays direct', originHits.length >= 2);
+	check('default bypassLoopback=true: NO_PROXY merges the loopback set',
+		process.env.NO_PROXY === 'example.invalid,localhost,127.0.0.1,::1', `NO_PROXY=${process.env.NO_PROXY}`);
+	const nonLoopback = await fetchText('http://not-loopback.example/probe');
+	check('default bypassLoopback=true: non-loopback host still proxied', nonLoopback === 'proxy-ok', nonLoopback);
+	await settings.update('dsh-proxy', { bypassLoopback: false });
+	await waitFor('explicit loopback bypass off', async () => (await fetchText(originUrl)) === 'proxy-ok');
+	check('bypassLoopback=false: loopback goes through the proxy again', proxyHits.length >= 3);
+	check('bypassLoopback=false: NO_PROXY exports user rules only',
+		process.env.NO_PROXY === 'example.invalid', `NO_PROXY=${process.env.NO_PROXY}`);
 
 	console.log('probe: ALL PASS — runtime switching verified inside a real DSH boot');
 } finally {
