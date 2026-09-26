@@ -6,6 +6,8 @@ import { Agent, EnvHttpProxyAgent, Socks5ProxyAgent, getGlobalDispatcher } from 
 
 import {
 	matchesNoProxy,
+	isLoopbackHostname,
+	mergeLoopbackNoProxy,
 	buildDispatcher,
 	buildSystemDispatcher,
 	parseScutilProxy,
@@ -184,13 +186,16 @@ test('matchesNoProxy mirrors undici semantics plus suffix extensions', () => {
 /* ------------------------------------------------- unit: dispatcher choice */
 
 test('buildDispatcher picks the right agent per protocol', () => {
-	assert.ok(buildDispatcher({ enabled: true, proxy: 'http://127.0.0.1:8080' }) instanceof EnvHttpProxyAgent);
-	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5://127.0.0.1:1080' }) instanceof Socks5ProxyAgent);
+	// bypassLoopback:false keeps the agent unwrapped so instanceof is exact
+	assert.ok(buildDispatcher({ enabled: true, proxy: 'http://127.0.0.1:8080', bypassLoopback: false }) instanceof EnvHttpProxyAgent);
+	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5://127.0.0.1:1080', bypassLoopback: false }) instanceof Socks5ProxyAgent);
 	// socks5h and socks:// normalize onto the SOCKS5 agent
-	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5h://127.0.0.1:1080' }) instanceof Socks5ProxyAgent);
-	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks://127.0.0.1:1080' }) instanceof Socks5ProxyAgent);
+	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5h://127.0.0.1:1080', bypassLoopback: false }) instanceof Socks5ProxyAgent);
+	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks://127.0.0.1:1080', bypassLoopback: false }) instanceof Socks5ProxyAgent);
+	// the default loopback bypass wraps every protocol in the routing dispatcher
+	assert.equal(buildDispatcher({ enabled: true, proxy: 'http://127.0.0.1:8080' }).constructor.kind, 'dsh-proxy');
 	// unsupported protocol rejects
-	assert.throws(() => buildDispatcher({ enabled: true, proxy: 'ftp://127.0.0.1:21' }), /unsupported proxy protocol/);
+	assert.throws(() => buildDispatcher({ enabled: true, proxy: 'ftp://127.0.0.1:21', bypassLoopback: false }), /unsupported proxy protocol/);
 });
 
 /* ------------------------------------------------- unit: mode resolution */
@@ -210,11 +215,32 @@ test('resolveConfig normalizes raw sections into the effective config', () => {
 		mode: 'manual',
 		proxy: 'http://p',
 		noProxy: [],
-		exportEnv: true
+		exportEnv: true,
+		bypassLoopback: true
 	});
 	assert.equal(resolveConfig({ mode: 'system' }).mode, 'system');
 	assert.deepEqual(resolveConfig({ mode: 'system' }).noProxy, []);
 	assert.equal(resolveConfig({ mode: 'manual', exportEnv: false }).exportEnv, false);
+	assert.equal(resolveConfig({ mode: 'manual' }).bypassLoopback, true, 'bypassLoopback defaults to true');
+	assert.equal(resolveConfig({ mode: 'manual', bypassLoopback: false }).bypassLoopback, false);
+});
+
+/* -------------------------------------------- unit: loopback bypass */
+
+test('isLoopbackHostname recognizes every loopback literal form', () => {
+	for (const host of ['localhost', 'LOCALHOST', '127.0.0.1', '127.0.0.2', '127.255.0.1', '::1', '[::1]', '0.0.0.0']) {
+		assert.equal(isLoopbackHostname(host), true, `${host} must be loopback`);
+	}
+	for (const host of ['example.com', '128.0.0.1', '1270.0.0.1', '::2', '::1.1', 'localhost.example', '']) {
+		assert.equal(isLoopbackHostname(host), false, `${host} must not be loopback`);
+	}
+});
+
+test('mergeLoopbackNoProxy merges user rules with the loopback set, deduplicated', () => {
+	assert.deepEqual(mergeLoopbackNoProxy([]), ['localhost', '127.0.0.1', '::1']);
+	// user rules first, loopback additions appended, duplicates dropped
+	assert.deepEqual(mergeLoopbackNoProxy(['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1']), ['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1']);
+	assert.deepEqual(mergeLoopbackNoProxy(['localhost', 'b.corp']), ['localhost', 'b.corp', '127.0.0.1', '::1']);
 });
 
 /* ------------------------------------------- unit: system-proxy detection */
@@ -314,14 +340,20 @@ test('detectSystemProxy follows env vars and returns null when none set', () => 
 /* ------------------------------------------------- unit: system dispatcher */
 
 test('buildSystemDispatcher picks the right agent per detected proxy', () => {
-	assert.ok(buildSystemDispatcher({ httpProxy: 'http://h:1', noProxy: [] }) instanceof EnvHttpProxyAgent);
-	assert.ok(buildSystemDispatcher({ httpsProxy: 'http://h:1', noProxy: [] }) instanceof EnvHttpProxyAgent);
-	assert.ok(buildSystemDispatcher({ socksProxy: 'socks5://h:1080', noProxy: [] }) instanceof Socks5ProxyAgent);
-	assert.ok(buildSystemDispatcher({ noProxy: [] }) instanceof Agent);
+	assert.ok(buildSystemDispatcher({ httpProxy: 'http://h:1', noProxy: [] }, false) instanceof EnvHttpProxyAgent);
+	assert.ok(buildSystemDispatcher({ httpsProxy: 'http://h:1', noProxy: [] }, false) instanceof EnvHttpProxyAgent);
+	assert.ok(buildSystemDispatcher({ socksProxy: 'socks5://h:1080', noProxy: [] }, false) instanceof Socks5ProxyAgent);
+	assert.ok(buildSystemDispatcher({ noProxy: [] }, false) instanceof Agent);
 
 	// any noProxy rule wraps the agent in the shared routing dispatcher
 	const wrapped = buildSystemDispatcher({ httpProxy: 'http://h:1', noProxy: ['localhost'] });
 	assert.equal(wrapped.constructor.kind, 'dsh-proxy');
+
+	// loopback bypass alone (no rules) also routes through the dispatcher
+	const loopbackWrapped = buildSystemDispatcher({ httpProxy: 'http://h:1', noProxy: [] }, true);
+	assert.equal(loopbackWrapped.constructor.kind, 'dsh-proxy');
+	// and with the bypass disabled and no rules, the agent stays unwrapped
+	assert.ok(buildSystemDispatcher({ httpProxy: 'http://h:1', noProxy: [] }, false) instanceof EnvHttpProxyAgent);
 });
 
 /* ----------------------------------------------------------- e2e: modes */
@@ -341,7 +373,7 @@ test('system mode follows the ambient HTTP_PROXY env without writing it', async 
 	const engine = createEngine(null);
 	t.after(() => engine.restore());
 
-	engine.apply({ mode: 'system', exportEnv: true });
+	engine.apply({ mode: 'system', exportEnv: true, bypassLoopback: false });
 	const body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(proxy.seen.length, 1);
@@ -393,7 +425,7 @@ test('engine routes global fetch through an HTTP proxy and back', async (t) => {
 	const engine = createEngine(null);
 	t.after(() => engine.restore());
 
-	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false, bypassLoopback: false });
 	let body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(proxy.seen.length, 1);
@@ -405,13 +437,62 @@ test('engine routes global fetch through an HTTP proxy and back', async (t) => {
 	assert.equal(proxy.seen.length, 1, 'disabled proxy must see no traffic');
 
 	// hot switch on again
-	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false, bypassLoopback: false });
 	body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(proxy.seen.length, 2);
 });
 
-test('noProxy bypasses the proxy for matching hosts only', async (t) => {
+test('loopback traffic bypasses the proxy by default (bypassLoopback=true)', async (t) => {
+	const origin = await startOrigin(); // 127.0.0.1
+	const v4any = http.createServer((req, res) => {
+		res.writeHead(200, { 'content-type': 'application/json' });
+		res.end(JSON.stringify({ via: 'origin', host: req.headers.host }));
+	});
+	await new Promise((resolve) => v4any.listen(0, '0.0.0.0', resolve)); // accepts 127.0.0.2 / 0.0.0.0
+	const v6 = http.createServer((req, res) => {
+		res.writeHead(200);
+		res.end(JSON.stringify({ via: 'origin', host: req.headers.host }));
+	});
+	await new Promise((resolve) => v6.listen(0, '::1', resolve));
+	const proxy = await startHttpProxy();
+	t.after(async () => {
+		await close(proxy.server);
+		await close(origin.server);
+		await close(v4any);
+		await close(v6);
+	});
+
+	const engine = createEngine(null);
+	t.after(() => engine.restore());
+
+	// no noProxy rules at all — the built-in loopback set still applies
+	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false });
+
+	const v4port = v4any.address().port;
+	// NOTE: 127.0.0.2 (rest of 127.0.0.0/8) is covered by the
+	// isLoopbackHostname unit test — this sandbox only lets connections
+	// through to 127.0.0.1/0.0.0.0/::1/localhost.
+	for (const url of [
+		origin.url, // 127.0.0.1
+		`http://0.0.0.0:${v4port}`, // this-host address
+		origin.url.replace('127.0.0.1', 'localhost'), // localhost name
+		`http://[::1]:${v6.address().port}` // IPv6 loopback
+	]) {
+		const body = await (await fetch(url)).json();
+		assert.equal(body.via, 'origin');
+	}
+	assert.equal(proxy.seen.length, 0, 'no loopback request may reach the proxy');
+
+	// bypassLoopback=false restores the pre-0.2.4 behavior: everything proxies
+	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false, bypassLoopback: false });
+	const localhostUrl = origin.url.replace('127.0.0.1', 'localhost');
+	const viaProxy = await (await fetch(localhostUrl)).json();
+	assert.equal(viaProxy.via, 'origin');
+	assert.equal(proxy.seen.length, 1, 'with bypassLoopback=false localhost must route via the proxy');
+});
+
+test('user noProxy rules still work alongside the loopback bypass', async (t) => {
 	const origin = await startOrigin();
 	const proxy = await startHttpProxy();
 	t.after(async () => {
@@ -422,16 +503,19 @@ test('noProxy bypasses the proxy for matching hosts only', async (t) => {
 	const engine = createEngine(null);
 	t.after(() => engine.restore());
 
+	// explicit 127.0.0.1 rule + default loopback set: both hosts bypass
 	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['127.0.0.1'], exportEnv: false });
 	const body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(proxy.seen.length, 0, '127.0.0.1 must bypass');
 
-	// localhost is not 127.0.0.1 for the matcher → goes through the proxy
+	// with the loopback bypass off, only the explicit rule bypasses
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['127.0.0.1'], exportEnv: false, bypassLoopback: false });
+	assert.equal((await (await fetch(origin.url)).json()).via, 'origin');
+	assert.equal(proxy.seen.length, 0, 'the explicit rule still bypasses');
 	const localhostUrl = origin.url.replace('127.0.0.1', 'localhost');
-	const viaProxy = await (await fetch(localhostUrl)).json();
-	assert.equal(viaProxy.via, 'origin');
-	assert.equal(proxy.seen.length, 1, 'localhost must route via proxy');
+	assert.equal((await (await fetch(localhostUrl)).json()).via, 'origin');
+	assert.equal(proxy.seen.length, 1, 'without the rule-eligible host, localhost must route via the proxy');
 });
 
 test('engine routes global fetch through a SOCKS5 proxy', async (t) => {
@@ -445,7 +529,7 @@ test('engine routes global fetch through a SOCKS5 proxy', async (t) => {
 	const engine = createEngine(null);
 	t.after(() => engine.restore());
 
-	engine.apply({ enabled: true, proxy: socks.url, exportEnv: false });
+	engine.apply({ enabled: true, proxy: socks.url, exportEnv: false, bypassLoopback: false });
 	const body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(socks.connects.length, 1);
@@ -463,7 +547,7 @@ test('SOCKS5 honors noProxy through the routing dispatcher', async (t) => {
 	const engine = createEngine(null);
 	t.after(() => engine.restore());
 
-	engine.apply({ enabled: true, proxy: socks.url, noProxy: ['127.0.0.1'], exportEnv: false });
+	engine.apply({ enabled: true, proxy: socks.url, noProxy: ['127.0.0.1'], exportEnv: false, bypassLoopback: false });
 	const body = await (await fetch(origin.url)).json();
 	assert.equal(body.via, 'origin');
 	assert.equal(socks.connects.length, 0, 'bypass rule must keep SOCKS out of the path');
@@ -486,7 +570,19 @@ test('env export follows the switch and never clobbers operator values', async (
 	assert.equal(process.env.HTTP_PROXY, proxy.url);
 	assert.equal(process.env.HTTPS_PROXY, proxy.url);
 	assert.equal(process.env.ALL_PROXY, proxy.url);
-	assert.equal(process.env.NO_PROXY, 'localhost');
+	// NO_PROXY carries the user rule merged with the loopback default set
+	assert.equal(process.env.NO_PROXY, 'localhost,127.0.0.1,::1');
+
+	// a distinct user rule keeps its position ahead of the loopback additions
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['a.corp'] });
+	assert.equal(process.env.NO_PROXY, 'a.corp,localhost,127.0.0.1,::1');
+
+	// with bypassLoopback=false the export falls back to the user rules only
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['a.corp'], bypassLoopback: false });
+	assert.equal(process.env.NO_PROXY, 'a.corp');
+	// and with no rules, no NO_PROXY is exported at all (legacy behavior)
+	engine.apply({ enabled: true, proxy: proxy.url, bypassLoopback: false });
+	assert.ok(!('NO_PROXY' in process.env));
 
 	engine.apply({ enabled: false });
 	assert.ok(!('HTTP_PROXY' in process.env));
@@ -508,10 +604,14 @@ test('clearing noProxy on a hot switch removes stale NO_PROXY env', (t) => {
 	t.after(() => engine.restore());
 
 	engine.apply({ enabled: true, proxy: 'http://127.0.0.1:9', noProxy: ['localhost'] });
-	assert.equal(process.env.NO_PROXY, 'localhost');
+	assert.equal(process.env.NO_PROXY, 'localhost,127.0.0.1,::1');
 
-	// hot switch to an empty noProxy list — NO_PROXY must clear, not go stale
+	// hot switch to an empty noProxy list — with the loopback bypass still on,
+	// NO_PROXY keeps the loopback default set (user rules dropped, not stale)
 	engine.apply({ enabled: true, proxy: 'http://127.0.0.1:9', noProxy: [] });
+	assert.equal(process.env.NO_PROXY, 'localhost,127.0.0.1,::1');
+	// disabling the loopback bypass with no rules clears NO_PROXY entirely
+	engine.apply({ enabled: true, proxy: 'http://127.0.0.1:9', noProxy: [], bypassLoopback: false });
 	assert.ok(!('NO_PROXY' in process.env));
 	assert.ok(!('no_proxy' in process.env));
 	assert.equal(process.env.HTTP_PROXY, 'http://127.0.0.1:9');
@@ -559,12 +659,13 @@ test('IPv6 noProxy rules bypass on the real request path', async (t) => {
 	t.after(() => engine.restore());
 
 	const url = `http://[::1]:${origin.address().port}/v6`;
+	// bypassLoopback off so these exercise the rule matcher, not the loopback default
 	// bracketed rule form
-	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['[::1]'], exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['[::1]'], exportEnv: false, bypassLoopback: false });
 	assert.equal(await (await fetch(url)).text(), 'origin-v6');
 	assert.equal(proxy.seen.length, 0, 'bracketed [::1] rule must bypass');
 	// bare rule form
-	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['::1'], exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['::1'], exportEnv: false, bypassLoopback: false });
 	assert.equal(await (await fetch(url)).text(), 'origin-v6');
 	assert.equal(proxy.seen.length, 0, 'bare ::1 rule must bypass');
 });
@@ -591,12 +692,12 @@ test('ambient NO_PROXY env never steers the in-process routing', async (t) => {
 	t.after(() => engine.restore());
 
 	// With plugin-level noProxy rules: routing must follow the section, not env.
-	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['example.invalid'], exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, noProxy: ['example.invalid'], exportEnv: false, bypassLoopback: false });
 	assert.equal((await (await fetch(origin.url)).json()).via, 'origin');
 	assert.equal(proxy.seen.length, 1, 'ambient NO_PROXY must not bypass the wrapped HTTP leg');
 
 	// With no plugin-level rules (unwrapped agent): still immune to env.
-	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false });
+	engine.apply({ enabled: true, proxy: proxy.url, exportEnv: false, bypassLoopback: false });
 	proxy.seen.length = 0;
 	assert.equal((await (await fetch(origin.url)).json()).via, 'origin');
 	assert.equal(proxy.seen.length, 1, 'unwrapped HTTP leg must also ignore ambient NO_PROXY');
@@ -657,5 +758,5 @@ test('proxy URL credentials are redacted in logs', () => {
 });
 
 test('SOCKS proxy URLs with credentials construct a SOCKS5 agent', () => {
-	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5://alice:s3cret@127.0.0.1:1080' }) instanceof Socks5ProxyAgent);
+	assert.ok(buildDispatcher({ enabled: true, proxy: 'socks5://alice:s3cret@127.0.0.1:1080', bypassLoopback: false }) instanceof Socks5ProxyAgent);
 });
