@@ -228,10 +228,11 @@ test('resolveConfig normalizes raw sections into the effective config', () => {
 /* -------------------------------------------- unit: loopback bypass */
 
 test('isLoopbackHostname recognizes every loopback literal form', () => {
-	for (const host of ['localhost', 'LOCALHOST', '127.0.0.1', '127.0.0.2', '127.255.0.1', '::1', '[::1]', '0.0.0.0']) {
+	// trailing-dot FQDN root label (`localhost.`, `127.0.0.1.`) is loopback too
+	for (const host of ['localhost', 'LOCALHOST', 'LOCALHOST.', 'localhost.', '127.0.0.1', '127.0.0.1.', '127.0.0.2', '127.255.0.1', '::1', '[::1]', '0.0.0.0']) {
 		assert.equal(isLoopbackHostname(host), true, `${host} must be loopback`);
 	}
-	for (const host of ['example.com', '128.0.0.1', '1270.0.0.1', '::2', '::1.1', 'localhost.example', '']) {
+	for (const host of ['example.com', '128.0.0.1', '1270.0.0.1', '::2', '::1.1', 'localhost.example', 'xlocalhost', 'localhost.evil', 'localhost..', '']) {
 		assert.equal(isLoopbackHostname(host), false, `${host} must not be loopback`);
 	}
 });
