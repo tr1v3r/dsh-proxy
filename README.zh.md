@@ -38,7 +38,20 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
 代理。启动时由你自己设置的环境变量绝不会被覆盖；禁用/卸载时全部还原。
 
 被替换下来的旧 dispatcher 先优雅关闭、30 秒后强制销毁，确保切换真正切断
-旧的 keep-alive 连接。
+旧的 keep-alive 连接。在途请求同样只有这 30 秒宽限（`RETIRE_DESTROY_MS`）：
+切换后仍持续超过约 30 秒的流式响应，会在旧 dispatcher 的 socket 被强制销毁时
+被中断。
+
+## 凭据安全
+
+代理 URL 中内嵌的 `user:pass@` 凭据以**明文**存放在磁盘上——profile 的
+`cordis.patch.yml` 与 settings 持久化中——仅靠文件权限保护。默认
+`exportEnv: true` 时，凭据还会随 `HTTP(S)_PROXY` 环境变量写入 dsh 进程，
+切换后拉起的子进程都会携带（同一用户可通过 `ps -E` 或
+`/proc/<PID>/environ` 看到；其他用户通常需要 root 等特权才能读取，
+具体取决于平台权限设置，并非所有同机用户都可见）。为此**不引入**新的配置项；凭据敏感的场景，
+建议让 dsh-proxy 指向本机免鉴权的代理入口（例如 `http://127.0.0.1:7890`，
+由它再对接需要鉴权的上游），而不是把 `user:pass@` 写进 URL。
 
 ## 安装
 
@@ -104,6 +117,7 @@ Web profile 也可打开「设置 → 通用 → 网络代理」：从下拉列�
       - localhost
       - .internal.example
       - registry.corp:443
+    bypassLoopback: true                   # 默认——本地回环默认直连（false 可改为走代理）
     exportEnv: true                        # 仅 manual——同步设置子进程的 HTTP(S)_PROXY
 ```
 
@@ -143,6 +157,7 @@ dsh-proxy: direct (mode: direct)
 | `web_search` / `web_fetch` | ✅ |
 | streamable-http MCP server | ✅ |
 | stdio MCP、bash 工具子进程（`curl`、`git`……） | ✅ 经导出的环境变量，仅对切换后新拉起的进程生效 |
+| 本地回环目标（`localhost`、`127.0.0.0/8`、`::1`、`0.0.0.0`） | ❌ 默认直连；设置 `bypassLoopback: false` 可改为走代理 |
 | pi-ai Bedrock 路由 | ⚠️ AWS SDK 自管代理（它会读 `HTTPS_PROXY` 环境变量） |
 | 内置浏览器 host / 浏览器下载 | ❌ 独立进程，请在浏览器侧配置 |
 
@@ -156,6 +171,20 @@ npm install
 npm test                      # 单测 + 本地 e2e：HTTP 代理、SOCKS5、noProxy、热切换、env
 node scripts/boot-probe.mjs   # boot 真实 DSH 插件树，通过 Settings 热切换验证
 ```
+
+boot probe 需要 **DSH >= 0.1.7-rc.1** 的安装（依赖旧版本缺失的
+`createRuntimeResolution` / `PluginPackages` 导出——在 dsh 0.1.5.x 上会报
+`TypeError: createRuntimeResolution is not a function`）。不必升级全局安装：
+用 `DSH_ROOT` 指向任意满足版本要求的安装树即可，例如装到临时目录：
+
+```sh
+mkdir -p /tmp/dsh-probe-root && cd /tmp/dsh-probe-root \
+  && npm install @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT=/tmp/dsh-probe-root/node_modules/@deepseek-ai/dsh node scripts/boot-probe.mjs
+```
+
+不设置 `DSH_ROOT` 时，probe 解析 `PATH` 上的 `dsh`，并要求该安装已满足
+版本要求。
 
 ## 许可
 
