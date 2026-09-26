@@ -178,10 +178,13 @@ boot probe 需要 **DSH >= 0.1.7-rc.1** 的安装（依赖旧版本缺失的
 用 `DSH_ROOT` 指向任意满足版本要求的安装树即可，例如装到临时目录：
 
 ```sh
-mkdir -p /tmp/dsh-probe-root && cd /tmp/dsh-probe-root \
-  && npm install @deepseek-ai/dsh@0.1.7-rc.1
-DSH_ROOT=/tmp/dsh-probe-root/node_modules/@deepseek-ai/dsh node scripts/boot-probe.mjs
+npm install --prefix /tmp/dsh-probe-root @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT=/tmp/dsh-probe-root node scripts/boot-probe.mjs
 ```
+
+两行都在本仓库根目录运行。scratch 安装会把依赖提升到
+`/tmp/dsh-probe-root/node_modules`，因此 `DSH_ROOT` 指向安装锚点目录
+`/tmp/dsh-probe-root` 本身——而不是包目录。
 
 不设置 `DSH_ROOT` 时，probe 解析 `PATH` 上的 `dsh`，并要求该安装已满足
 版本要求。

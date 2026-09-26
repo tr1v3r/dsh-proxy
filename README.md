@@ -200,10 +200,14 @@ upgrade your global install: point `DSH_ROOT` at any matching package tree,
 for example one installed into a scratch directory:
 
 ```sh
-mkdir -p /tmp/dsh-probe-root && cd /tmp/dsh-probe-root \
-  && npm install @deepseek-ai/dsh@0.1.7-rc.1
-DSH_ROOT=/tmp/dsh-probe-root/node_modules/@deepseek-ai/dsh node scripts/boot-probe.mjs
+npm install --prefix /tmp/dsh-probe-root @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT=/tmp/dsh-probe-root node scripts/boot-probe.mjs
 ```
+
+Run both lines from this repository's root. The scratch install hoists the
+dependencies to `/tmp/dsh-probe-root/node_modules`, so `DSH_ROOT` points at
+the install anchor directory `/tmp/dsh-probe-root` itself — not at the
+package directory.
 
 Without `DSH_ROOT`, the probe resolves the `dsh` found on `PATH` and expects
 that installation to already satisfy the version requirement.
