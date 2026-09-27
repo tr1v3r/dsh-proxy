@@ -41,7 +41,10 @@ With `exportEnv: true` (default) the switch also exports
 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` into the dsh process, so
 child processes spawned after the switch (bash-tool `curl`/`git`, stdio MCP
 servers) follow the same proxy. Variables you set yourself at boot are never
-clobbered, and everything is restored on disable/unload.
+clobbered, and everything is restored on disable/unload. While loopback bypass is
+on (the default), the exported `NO_PROXY` also gains the loopback defaults
+(`localhost,127.0.0.1,::1`, merged and deduplicated with your rules); with
+`bypassLoopback: false` your list is exported unchanged.
 
 Retired dispatchers close gracefully and are force-destroyed after 30 s, so
 switching away actually tears down old keep-alive connections. In-flight
@@ -136,7 +139,8 @@ The `mode` key picks `direct`, `system`, or `manual`:
       - localhost
       - .internal.example
       - registry.corp:443
-    bypassLoopback: true                   # default — loopback stays direct (false to proxy it)
+    bypassLoopback: true                   # manual + system — loopback stays direct
+                                           # (false to proxy it)
     exportEnv: true                        # manual only — also set HTTP(S)_PROXY for children
 ```
 

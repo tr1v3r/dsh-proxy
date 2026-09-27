@@ -35,7 +35,9 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
 `exportEnv: true`（默认）时，切换还会同步导出
 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` 到 dsh 进程环境——切换后
 新拉起的子进程（bash 工具里的 `curl`/`git`、stdio MCP server）跟着走同一
-代理。启动时由你自己设置的环境变量绝不会被覆盖；禁用/卸载时全部还原。
+代理。启动时由你自己设置的环境变量绝不会被覆盖；禁用/卸载时全部还原。回环直连开启
+（默认）时，导出的 `NO_PROXY` 还会并入回环默认集（`localhost,127.0.0.1,::1`，与你的
+规则去重合并）；`bypassLoopback: false` 时按你自己的列表原样导出。
 
 被替换下来的旧 dispatcher 先优雅关闭、30 秒后强制销毁，确保切换真正切断
 旧的 keep-alive 连接。在途请求同样只有这 30 秒宽限（`RETIRE_DESTROY_MS`）：
@@ -117,7 +119,8 @@ Web profile 也可打开「设置 → 通用 → 网络代理」：从下拉列�
       - localhost
       - .internal.example
       - registry.corp:443
-    bypassLoopback: true                   # 默认——本地回环默认直连（false 可改为走代理）
+    bypassLoopback: true                   # manual 与 system 均生效——本地回环默认直连
+                                           # （false 可改为走代理）
     exportEnv: true                        # 仅 manual——同步设置子进程的 HTTP(S)_PROXY
 ```
 
