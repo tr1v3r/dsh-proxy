@@ -10,6 +10,8 @@ export interface ProxySection {
 	proxy?: string;
 	noProxy?: string[];
 	exportEnv?: boolean;
+	/** Always route loopback (localhost, 127.0.0.0/8, ::1, 0.0.0.0) direct. Default true. */
+	bypassLoopback?: boolean;
 }
 
 /** Normalized config the engine consumes (output of resolveConfig). */
@@ -18,6 +20,7 @@ export interface EffectiveConfig {
 	proxy?: string;
 	noProxy: string[];
 	exportEnv: boolean;
+	bypassLoopback: boolean;
 }
 
 /** Normalized proxy spec produced by detectSystemProxy / parseScutilProxy. */
@@ -54,9 +57,12 @@ export const Config: unknown;
 export function resolveMode(config?: ProxySection): ProxyModeValue;
 export function resolveConfig(config?: ProxySection): EffectiveConfig;
 export function parseNoProxyList(value?: string): string[];
+export const LOOPBACK_NO_PROXY: string[];
+export function isLoopbackHostname(hostname: string): boolean;
+export function mergeLoopbackNoProxy(rules: string[]): string[];
 export function matchesNoProxy(hostname: string, port: string | null, rules: string[]): boolean;
 export function buildDispatcher(config: ProxySection & { proxy: string }): DispatcherLike;
-export function buildSystemDispatcher(detected: SystemProxySpec | null): DispatcherLike;
+export function buildSystemDispatcher(detected: SystemProxySpec | null, bypassLoopback?: boolean): DispatcherLike;
 export function parseScutilProxy(text: string): SystemProxySpec;
 export function detectSystemProxy(
 	platform?: string,
