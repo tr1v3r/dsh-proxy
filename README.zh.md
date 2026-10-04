@@ -64,7 +64,7 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
    ```json
    {
      "dependencies": {
-       "@tr1v3r/dsh-proxy": "^0.2.4"
+       "@tr1v3r/dsh-proxy": "^0.2.5"
      },
      "dsh": {
        "profile": {
