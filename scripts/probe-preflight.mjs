@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
-const required = {
+export const required = {
 	'dsh-app-boot': ['boot', 'loadProfile', 'composeEntries', 'loadLayeredEnv', 'createRuntimeResolution', 'PluginPackages'],
 	'dsh-launch-environment': ['DSH_LAUNCH_ENVIRONMENT_KEY'],
 	'dsh-cmdline': ['provideCmdline']

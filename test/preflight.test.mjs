@@ -4,13 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { preflight } from '../scripts/probe-preflight.mjs';
-
-const exportsByPackage = {
-	'dsh-app-boot': ['boot', 'loadProfile', 'composeEntries', 'loadLayeredEnv', 'createRuntimeResolution', 'PluginPackages'],
-	'dsh-launch-environment': ['DSH_LAUNCH_ENVIRONMENT_KEY'],
-	'dsh-cmdline': ['provideCmdline']
-};
+import { preflight, required as exportsByPackage } from '../scripts/probe-preflight.mjs';
 function fixture(t, version, missing) {
 	const root = mkdtempSync(join(tmpdir(), 'proxy preflight '));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
