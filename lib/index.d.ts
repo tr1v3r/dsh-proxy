@@ -39,9 +39,23 @@ export interface DispatcherLike {
 	destroy(): Promise<void>;
 }
 
+/** Last apply result, never a connectivity guarantee or per-request route. */
+export interface RouteStatus {
+	selectedMode: ProxyModeValue;
+	generation: number;
+	code: 'direct' | 'applied' | 'system-detection-error' | 'system-unavailable' | 'system-apply-error' | 'manual-missing' | 'manual-apply-error';
+	route: 'baseline' | 'http(s)' | 'socks5';
+	source: 'none' | 'manual' | 'environment' | 'macos';
+	httpEndpoint: string | null;
+	httpsEndpoint: string | null;
+	bypassLoopback: boolean;
+	noProxyCount: number;
+}
+
 export interface SwitchEngine {
 	apply(config: ProxySection): void;
 	restore(): void;
+	getStatus(): RouteStatus | null;
 }
 
 export const name: string;

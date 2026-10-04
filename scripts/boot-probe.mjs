@@ -10,19 +10,27 @@
  */
 
 import { createServer } from 'node:http';
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync, cpSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync, rmSync, cpSync, mkdtempSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { preflight } from './probe-preflight.mjs';
+import { PROXY_ENV_KEYS } from '../lib/index.js';
 import { getGlobalDispatcher } from 'undici';
 
-const DSH_ROOT = process.env.DSH_ROOT ?? dirname(dirname(realpathSync(execFileSync('which', ['dsh'], { encoding: 'utf8' }).trim())));
-const APP_BOOT = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js`;
-const LAUNCH_ENV = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-launch-environment/lib/index.js`;
-const CMDLINE = `${DSH_ROOT}/node_modules/@deepseek-ai/dsh-cmdline/lib/index.js`;
-const PLUGIN_DIR = process.env.PROBE_PLUGIN_DIR ?? new URL('..', import.meta.url).pathname;
-
-const HOME = process.env.PROBE_HOME ?? '/tmp/dsh-proxy-boot/home';
+// Fail before creating a HOME, listening, or booting. No raw import/TypeError stack.
+let checked;
+try { checked = await preflight(); }
+catch (error) { console.error(error.message); process.exit(1); }
+const { root: DSH_ROOT, runtime } = checked;
+const { boot, loadProfile, composeEntries, loadLayeredEnv, createRuntimeResolution, PluginPackages, DSH_LAUNCH_ENVIRONMENT_KEY, provideCmdline } = runtime;
+const PLUGIN_DIR = process.env.PROBE_PLUGIN_DIR ?? fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
+// PROBE_HOME is a parent, never a directory to erase. Only this unique child is owned.
+const HOME = mkdtempSync(join(process.env.PROBE_HOME ?? tmpdir(), 'dsh-proxy-boot-'));
+process.on('exit', () => rmSync(HOME, { recursive: true, force: true }));
+for (const key of PROXY_ENV_KEYS) delete process.env[key];
 const PROFILE = 'proxyprobe';
+const web = process.argv.includes('--web');
 
 /* ------------------------------------------------- local origin + proxy */
 
@@ -47,7 +55,6 @@ const proxyUrl = `http://127.0.0.1:${proxy.address().port}`;
 
 /* ------------------------------------------------------ throwaway home */
 
-rmSync(HOME, { recursive: true, force: true });
 const profileDir = join(HOME, 'profiles', PROFILE);
 mkdirSync(profileDir, { recursive: true });
 
@@ -56,13 +63,14 @@ writeFileSync(join(profileDir, 'package.json'), JSON.stringify({
 	private: true,
 	dsh: {
 		profile: {
-			bundles: ['@deepseek-ai/dsh-base', '@tr1v3r/dsh-proxy'],
+			bundles: ['@deepseek-ai/dsh-base', ...(web ? ['@deepseek-ai/dsh-web-app'] : []), '@tr1v3r/dsh-proxy'],
 			patchReload: 'startup'
 		}
 	}
 }, null, '\t'));
 
-writeFileSync(join(profileDir, 'cordis.patch.yml'), [
+const webPatch = web ? '- id: web-runtime\n  config: { openBrowser: false, printUrl: false, surfaceContext: false }\n' : '';
+writeFileSync(join(profileDir, 'cordis.patch.yml'), webPatch + [
 	'- id: dsh-proxy',
 	'  config:',
 	'    enabled: true',
@@ -80,7 +88,10 @@ writeFileSync(join(profileDir, 'cordis.patch.yml'), [
 mkdirSync(join(profileDir, 'node_modules', '@tr1v3r'), { recursive: true });
 cpSync(PLUGIN_DIR, join(profileDir, 'node_modules', '@tr1v3r', 'dsh-proxy'), {
 	recursive: true,
-	filter: (src) => !src.includes(`${PLUGIN_DIR}/.git`) && !src.includes('node_modules')
+	filter: (src) => {
+		const top = relative(PLUGIN_DIR, src).split('/')[0];
+		return !top || ['package.json', 'cordis.patch.yml', 'lib'].includes(top);
+	}
 });
 // undici must come from the plugin's own installed copy for resolution.
 cpSync(
@@ -98,10 +109,6 @@ cpSync(
 
 process.env.DSH_HOME = HOME;
 process.env.DEEPSEEK_API_KEY ??= 'probe-unused';
-
-const { boot, loadProfile, composeEntries, loadLayeredEnv, createRuntimeResolution, PluginPackages } = await import(APP_BOOT);
-const { DSH_LAUNCH_ENVIRONMENT_KEY } = await import(LAUNCH_ENV);
-const { provideCmdline } = await import(CMDLINE);
 
 const installAnchor = `${DSH_ROOT}/package.json`;
 const profile = loadProfile('dsh', PROFILE, installAnchor, HOME);
@@ -133,7 +140,7 @@ const ctx = await boot('dsh', join(profile.dir, 'cordis.yml'), structuredClone(p
 	hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, loadLayeredEnv('dsh'));
 	await hostCtx.plugin(PluginPackages, { resolution });
 	provideCmdline(hostCtx, {
-		args: [],
+		args: web ? ['--port', '0', '--no-open'] : [],
 		exit: () => {},
 		ready: { onReady: (callback) => { callback(); return () => {}; } }
 	});
@@ -192,9 +199,9 @@ try {
 	const updated = settings.describe().find((row) => row.ns === 'dsh-proxy');
 	check('settings describe sees the new mode', updated?.value.mode === 'manual');
 	// ---- editing the profile patch directly follows the same live config path
-	writeFileSync(profile.patchPath, '- id: dsh-proxy\n  config:\n    mode: direct\n');
+	writeFileSync(profile.patchPath, webPatch + '- id: dsh-proxy\n  config:\n    mode: direct\n');
 	await waitFor('profile patch switched to direct', () => getGlobalDispatcher() === baseline);
-	writeFileSync(profile.patchPath, `- id: dsh-proxy\n  config:\n    mode: manual\n    proxy: ${proxyUrl}\n`);
+	writeFileSync(profile.patchPath, webPatch + `- id: dsh-proxy\n  config:\n    mode: manual\n    proxy: ${proxyUrl}\n`);
 	await waitFor('profile patch switched back to manual', isOurs);
 	check('profile patch edits hot-reload the proxy', settings.describe().find((row) => row.ns === 'dsh-proxy')?.value.mode === 'manual');
 
@@ -213,6 +220,28 @@ try {
 	check('bypassLoopback=false: NO_PROXY exports user rules only',
 		process.env.NO_PROXY === 'example.invalid', `NO_PROXY=${process.env.NO_PROXY}`);
 
+	if (web) {
+		await settings.update('dsh-proxy', { mode: 'direct' });
+		await waitFor('baseline before status transport check', () => getGlobalDispatcher() === baseline);
+		const connection = ctx.get('connection');
+		const baseUrl = `http://127.0.0.1:${ctx.get('webServer').port}`;
+		const auth = await fetch(connection.authenticatedUrl(baseUrl), { redirect: 'manual' });
+		const cookie = auth.headers.get('set-cookie')?.split(';')[0];
+		check('web: process-token exchange issues a browser cookie', Boolean(cookie));
+		const url = `${baseUrl}/api/dsh-proxy/status`;
+		check('web: unauthenticated status is rejected', (await fetch(url)).status === 401);
+		check('web: foreign Origin is rejected', (await fetch(url, { headers: { cookie, origin: 'https://untrusted.invalid' } })).status === 403);
+		const beforeDispatcher = getGlobalDispatcher();
+		const beforeHits = proxyHits.length;
+		const response = await fetch(url, { headers: { cookie } });
+		const snapshot = await response.json();
+		check('web: authenticated GET returns no-store applied snapshot', response.ok && response.headers.get('cache-control') === 'no-store' && snapshot.route === 'baseline' && snapshot.selectedMode === 'direct');
+		check('web: status read preserves dispatcher and makes no proxy requests', getGlobalDispatcher() === beforeDispatcher && proxyHits.length === beforeHits);
+		await settings.update('dsh-proxy', { mode: 'manual', bypassLoopback: true });
+		await waitFor('manual before second status read', isOurs);
+		const next = await (await fetch(url, { headers: { cookie } })).json();
+		check('web: hot switch updates both endpoint snapshots', next.generation > snapshot.generation && next.httpEndpoint === proxyUrl && next.httpsEndpoint === proxyUrl);
+	}
 	console.log('probe: ALL PASS — runtime switching verified inside a real DSH boot');
 } finally {
 	await ctx.fiber.dispose();

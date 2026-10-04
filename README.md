@@ -171,6 +171,29 @@ dsh-proxy: direct (mode: direct)
 (Userinfo in the proxy URL is redacted in logs. `system` mode follows the
 ambient env/OS proxy, so it never writes those env vars itself.)
 
+## Applied route snapshot
+
+The General settings row can read the host's **last applied default route**
+through an optional, authenticated Connection Fetch route. It shows the selected mode,
+source, separately redacted HTTP/HTTPS endpoints, bypass policy, generation and
+stable apply/fallback code. Refresh explicitly after a save if the host has not
+applied that revision yet. Unsupported/disconnected hosts show “unavailable”;
+normal settings and quick switching still work without this capability.
+
+This is not a connectivity/health test or a per-request trace. `direct` restores
+the original dispatcher, which another plugin may have configured; it does not
+guarantee physical direct access. `system` reports the last installed result,
+not a fresh OS/environment detection. NO_PROXY and loopback policy may bypass
+individual requests. No arbitrary URL probe, provider request, credentials or
+full proxy URL is sent by this status feature. Provider-aware diagnostics remain
+deferred until adapters expose an explicit effective-target/security contract.
+
+When exporting NO_PROXY with loopback bypass enabled, equivalent literal
+loopback entries (case, single trailing dot, IPv6 brackets) are deduplicated,
+preserving the first spelling and order. Suffix/wildcard/port rules, different
+127/8 addresses and non-loopback trailing dots are not newly equated.
+`bypassLoopback: false` still exports the literal user list without defaults.
+
 ## What is covered / not covered
 
 | Traffic | Routed? |
@@ -194,27 +217,31 @@ experimental upstream.
 npm install
 npm test                      # unit + local e2e: HTTP proxy, SOCKS5, noProxy, hot-switch, env
 node scripts/boot-probe.mjs   # boots a real DSH tree and switches through Settings
+node scripts/boot-probe.mjs --web # also tests authenticated status GET + auth/Origin fences
 ```
 
-The boot probe needs a **DSH >= 0.1.7-rc.1** installation (it uses the
-`createRuntimeResolution` / `PluginPackages` exports that older versions
-lack — with dsh 0.1.5.x it fails with
-`TypeError: createRuntimeResolution is not a function`). You don't have to
-upgrade your global install: point `DSH_ROOT` at any matching package tree,
-for example one installed into a scratch directory:
+The boot probe checks actual runtime capabilities before listening, creating
+its throwaway home or booting. **DSH >= 0.1.7-rc.1** is the verified reference,
+not a version gate: the install anchor, imports and required exports (including
+`createRuntimeResolution` / `PluginPackages`) must be present. Missing roots,
+modules and capabilities produce actionable preflight errors instead of a late
+TypeError. You need not upgrade your global install; use a scratch directory:
 
 ```sh
-npm install --prefix /tmp/dsh-probe-root @deepseek-ai/dsh@0.1.7-rc.1
-DSH_ROOT=/tmp/dsh-probe-root node scripts/boot-probe.mjs
+ROOT=$(mktemp -d)
+npm install --prefix "$ROOT" @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT="$ROOT" node scripts/boot-probe.mjs
 ```
 
-Run both lines from this repository's root. The scratch install hoists the
-dependencies to `/tmp/dsh-probe-root/node_modules`, so `DSH_ROOT` points at
-the install anchor directory `/tmp/dsh-probe-root` itself — not at the
-package directory.
+Run these commands from this repository's root. `DSH_ROOT` names the install
+anchor containing `package.json`; dependency resolution supports hoisted scratch
+installs as well as package-local dependencies. Without it, the probe resolves
+the real `dsh` executable on `PATH` and preflights that installation.
 
-Without `DSH_ROOT`, the probe resolves the `dsh` found on `PATH` and expects
-that installation to already satisfy the version requirement.
+`PROBE_HOME`, if supplied, must be an existing parent directory. The probe owns
+and cleans only a unique temporary child, never that parent or its contents.
+Inherited proxy variables are cleared in the probe process. All routing checks
+use local servers; no provider/model request is made.
 
 ## License
 

@@ -123,7 +123,12 @@ function quickHarness(initial) {
 	};
 	return {
 		render, renderRow, walk, calls, pending, effects, scope,
-		set: (next) => { snapshot = next; changed(); }
+		set: (next) => { snapshot = next; changed(); },
+		statusHarness: (readStatus) => {
+			const component = walk(renderRow(), (node) => node.type?.name === 'RouteStatus').type;
+			states.length = 0; effects.length = 0;
+			return (revision = 1) => { cursor = 0; return component({ readStatus, revision, t: (key) => key }); };
+		}
 	};
 }
 
@@ -225,4 +230,34 @@ test('COPY stays bilingual and honest: coverage, immediate effect, loopback, log
 	// systemUnknown keeps deferring to DSH logs — no live-status claim.
 	assert.match(copy.zh.systemUnknown, /以 DSH 日志为准/);
 	assert.match(copy.en.systemUnknown, /DSH logs/);
+});
+
+
+test('route status drops stale replies, handles unavailable transport, and fences unmount', async () => {
+	const h = quickHarness(snapshot('direct'));
+	const pending = [];
+	const render = h.statusHarness(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+	let tree = render();
+	const refresh = () => h.walk(tree, (node) => node.type === 'button').props.onClick();
+	const first = refresh();
+	const second = refresh();
+	pending[1].resolve({ ok: true, value: { selectedMode: 'system', source: 'environment', generation: 2, code: 'applied', route: 'http(s)', httpEndpoint: 'http://new:8', httpsEndpoint: 'http://new:9', noProxyCount: 0, bypassLoopback: true } });
+	await second;
+	pending[0].resolve({ ok: true, value: { generation: 1, httpEndpoint: 'http://stale:8' } });
+	await first;
+	tree = render();
+	assert.match(JSON.stringify(tree), /http:\/\/new:8/);
+	assert.doesNotMatch(JSON.stringify(tree), /stale/);
+	const failed = refresh();
+	pending[2].reject(new Error('sensitive transport URL'));
+	await failed;
+	tree = render();
+	assert.match(JSON.stringify(tree), /routeUnavailable/);
+	assert.doesNotMatch(JSON.stringify(tree), /sensitive/);
+	const cleanup = h.effects.at(-1)();
+	cleanup();
+	pending[3].resolve({ ok: true, value: { httpEndpoint: 'http://after-unmount:9' } });
+	await Promise.resolve();
+	assert.doesNotMatch(JSON.stringify(render()), /after-unmount/);
+	assert.equal(h.calls.length, 0, 'reading status never writes config');
 });

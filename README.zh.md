@@ -151,6 +151,23 @@ dsh-proxy: direct (mode: direct)
 （日志中代理 URL 的用户名密码会打码。`system` 模式只读环境/系统代理，
 不会回写这些环境变量。）
 
+## 已应用路由快照
+
+通用设置中的代理卡片通过可选、已认证的 Connection Fetch 路由，读取 Host
+**最近应用的默认路由**：所选模式、来源、分别脱敏的 HTTP/HTTPS 端点、绕过策略、
+代次及稳定的应用/回退代码。保存完成不等于 Host 已应用该版本，必要时手动刷新。
+不支持此能力或断连时显示“状态不可用”，不影响原有设置及快捷切换。
+
+快照不是连接健康检查或逐请求追踪。`direct` 恢复原始 dispatcher（可能被其他插件
+配置），不保证物理直连；`system` 展示上次实际安装结果，不重新探测环境/系统。
+NO_PROXY 和回环策略仍可能让个别请求绕过代理。此功能不发送任意 URL 探针或
+提供方请求，也不传递凭据或完整代理 URL。提供方连接诊断仍延期，等待适配器给出
+明确的有效目标与安全契约。
+
+开启回环绕过时，导出的 NO_PROXY 会对纯回环地址的大小写、单尾点和 IPv6 方括号
+等价形式去重，保留首个拼写和顺序。不新增合并后缀/通配符/端口规则、不同 127/8
+地址或非回环域名的尾点。`bypassLoopback: false` 仍按原用户列表导出，不注入默认值。
+
 ## 覆盖范围
 
 | 流量 | 是否代理 |
@@ -173,24 +190,28 @@ agent 上游目前标注 experimental。
 npm install
 npm test                      # 单测 + 本地 e2e：HTTP 代理、SOCKS5、noProxy、热切换、env
 node scripts/boot-probe.mjs   # boot 真实 DSH 插件树，通过 Settings 热切换验证
+node scripts/boot-probe.mjs --web # 加测已认证状态 GET 与 auth/Origin 拒绝路径
 ```
 
-boot probe 需要 **DSH >= 0.1.7-rc.1** 的安装（依赖旧版本缺失的
-`createRuntimeResolution` / `PluginPackages` 导出——在 dsh 0.1.5.x 上会报
-`TypeError: createRuntimeResolution is not a function`）。不必升级全局安装：
-用 `DSH_ROOT` 指向任意满足版本要求的安装树即可，例如装到临时目录：
+boot probe 在监听端口、创建临时 home 或启动前，先检查实际运行能力。
+**DSH >= 0.1.7-rc.1** 是已验证参考，并非按版本号拒绝：安装锚点、模块导入及
+所需导出（含 `createRuntimeResolution` / `PluginPackages`）必须可用。缺失根目录、
+模块或导出时输出可操作的预检错误，不再到后面才抛 TypeError。不必升级全局安装，
+可使用临时安装目录：
 
 ```sh
-npm install --prefix /tmp/dsh-probe-root @deepseek-ai/dsh@0.1.7-rc.1
-DSH_ROOT=/tmp/dsh-probe-root node scripts/boot-probe.mjs
+ROOT=$(mktemp -d)
+npm install --prefix "$ROOT" @deepseek-ai/dsh@0.1.7-rc.1
+DSH_ROOT="$ROOT" node scripts/boot-probe.mjs
 ```
 
-两行都在本仓库根目录运行。scratch 安装会把依赖提升到
-`/tmp/dsh-probe-root/node_modules`，因此 `DSH_ROOT` 指向安装锚点目录
-`/tmp/dsh-probe-root` 本身——而不是包目录。
+在本仓库根目录运行上述命令。`DSH_ROOT` 指向含 `package.json` 的安装锚点；
+模块解析同时支持 scratch 提升依赖与包内依赖。不指定时，probe 解析 `PATH` 上
+`dsh` 可执行文件的真实路径，并对该安装执行预检。
 
-不设置 `DSH_ROOT` 时，probe 解析 `PATH` 上的 `dsh`，并要求该安装已满足
-版本要求。
+若指定 `PROBE_HOME`，它必须是已存在的父目录。probe 仅创建并清理其下唯一的
+临时子目录，不删除父目录或原有内容。probe 进程会清空继承的代理变量；路由验证
+只用本地服务器，不发送提供方/模型请求。
 
 ## 许可
 
