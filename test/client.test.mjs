@@ -67,7 +67,7 @@ test('proxy mode uses the DSH menu primitive with no Apply button', () => {
 	assert.doesNotMatch(source, /React\.createElement\('select'|dshProxyApply|type: 'submit'/);
 });
 
-function quickHarness(initial) {
+function quickHarness(initial, locale) {
 	let snapshot = initial;
 	let changed = () => {};
 	const calls = [];
@@ -101,17 +101,23 @@ function quickHarness(initial) {
 	const client = mountClient(react);
 	let quick;
 	let row;
+	let copy;
+	const t = (key, vars) => {
+		if (!locale) return vars?.endpoint ? `${key}: ${vars.endpoint}` : key;
+		const text = copy[locale][key] ?? key;
+		return text.replace(/\{(\w+)\}/g, (match, name) => vars?.[name] ?? match);
+	};
 	client.apply({
-		effect: () => {},
-		locale: { register: () => () => {}, bind: () => (key, vars) => vars?.endpoint ? `${key}: ${vars.endpoint}` : key },
+		effect: (callback) => callback(),
+		locale: { register: (_name, value) => { copy = value; return () => {}; }, bind: () => t },
 		configForms: { get: () => scope },
 		slots: { inject: (_name, fn) => fn(), register: (options, component) => {
 			if (options.name === 'sidebar.footer.action') quick = component;
 			if (options.name === 'settings.general.item') row = component;
 		} }
 	});
-	const render = (wide = true) => { cursor = 0; return quick({ scope, t: (key, vars) => vars?.endpoint ? `${key}: ${vars.endpoint}` : key, wide }); };
-	const renderRow = () => { cursor = 0; return row({ scope, t: (key) => key }); };
+	const render = (wide = true) => { cursor = 0; return quick({ scope, t, wide }); };
+	const renderRow = () => { cursor = 0; return row({ scope, t }); };
 	const walk = (tree, predicate) => {
 		if (!tree || typeof tree !== 'object') return null;
 		if (predicate(tree)) return tree;
@@ -127,7 +133,7 @@ function quickHarness(initial) {
 		statusHarness: (readStatus) => {
 			const component = walk(renderRow(), (node) => node.type?.name === 'RouteStatus').type;
 			states.length = 0; effects.length = 0;
-			return (revision = 1) => { cursor = 0; return component({ readStatus, revision, t: (key) => key }); };
+			return (revision = 1) => { cursor = 0; return component({ readStatus, revision, t }); };
 		}
 	};
 }
@@ -232,6 +238,51 @@ test('COPY stays bilingual and honest: coverage, immediate effect, loopback, log
 	assert.match(copy.en.systemUnknown, /DSH logs/);
 });
 
+
+test('route status translates every host code using registered Chinese and English COPY', async () => {
+	const labels = {
+		direct: ['已恢复原始 dispatcher', 'original dispatcher restored'],
+		applied: ['已应用', 'applied'],
+		'system-unavailable': ['无可用系统代理', 'no usable system proxy'],
+		'system-detection-error': ['系统代理读取失败', 'system proxy detection failed'],
+		'system-apply-error': ['系统代理应用失败', 'system proxy apply failed'],
+		'manual-missing': ['缺少代理地址', 'missing proxy URL'],
+		'manual-apply-error': ['配置无效', 'invalid configuration']
+	};
+	// Keep the fixtures exhaustive when the host adds another snapshot code.
+	const host = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8');
+	const hostCodes = [...new Set(Array.from(host.matchAll(/snapshot\(effective, '([^']+)'/g), (match) => match[1]))];
+	assert.deepEqual(hostCodes.sort(), Object.keys(labels).sort());
+	for (const [index, locale] of ['zh', 'en'].entries()) {
+		for (const [code, expected] of Object.entries(labels)) {
+			const h = quickHarness(snapshot('direct'), locale);
+			const render = h.statusHarness(async () => ({ ok: true, value: {
+				selectedMode: code.startsWith('manual') ? 'manual' : code === 'direct' ? 'direct' : 'system',
+				source: 'none', generation: 1, code, route: 'baseline', noProxyCount: 0, bypassLoopback: true
+			} }));
+			await h.walk(render(), (node) => node.type === 'button').props.onClick();
+			const summary = render().props.children[1].props.children[0];
+			assert.ok(summary.endsWith(` · ${expected[index]}`), `${locale}: ${code}: ${summary}`);
+			assert.doesNotMatch(summary, /code_/);
+		}
+	}
+});
+
+test('unknown or missing host codes use safe localized fallback, never raw host data', async () => {
+	for (const [locale, expected] of [['zh', '未知路由状态'], ['en', 'unknown route status']]) {
+		for (const code of ['future-error', 'https://user:secret@host/error', '__proto__', null, undefined, 42]) {
+			const h = quickHarness(snapshot('direct'), locale);
+			const render = h.statusHarness(async () => ({ ok: true, value: {
+				selectedMode: 'direct', source: 'none', generation: 1, code,
+				route: 'baseline', noProxyCount: 0, bypassLoopback: true
+			} }));
+			await h.walk(render(), (node) => node.type === 'button').props.onClick();
+			const tree = render();
+			assert.ok(tree.props.children[1].props.children[0].endsWith(` · ${expected}`));
+			assert.doesNotMatch(JSON.stringify(tree), /code_|future-error|secret|__proto__/);
+		}
+	}
+});
 
 test('route status drops stale replies, handles unavailable transport, and fences unmount', async () => {
 	const h = quickHarness(snapshot('direct'));
