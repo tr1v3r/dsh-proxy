@@ -6,14 +6,17 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-zh.svg)](https://dsh.market/)
 
-![演示：切换代理模式即时改写出站路由](docs/assets/proxy-switch-demo.gif)
+![Web GUI 演示：侧栏代理图标、模式快捷切换与已应用路由状态](docs/assets/proxy-switch-demo.gif)
 
 `@tr1v3r/dsh-proxy` 是 DeepSeek Harness 插件，把进程内**所有出站请求**——
 LLM 提供方、`web_search` / `web_fetch`、streamable-http MCP——经由
 HTTP(S) CONNECT 或 SOCKS5 代理转发，并且支持**运行时随时开关、随时换代理**：
 可以在 Web「设置 → 通用 → 网络代理」中操作，也可以编辑 profile 的
 `cordis.patch.yml` 中的 `dsh-proxy` 条目（热加载），全程零重启。
-上面的动图展示路由引擎，安装后可运行 `node scripts/demo.mjs` 复现。
+上面的动图由隔离 DSH Web profile 的真实截图制作，展示侧栏代理图标、直连／跟随系统／
+手动代理快捷菜单，以及「设置 → 通用 → 网络代理」中的 Host 已应用路由快照。
+代理地址仅用于演示；快照不代表连接健康检测。若要运行独立的终端路由引擎演示，
+安装后执行 `node scripts/demo.mjs`。
 
 ## 工作原理
 
