@@ -78,10 +78,11 @@ test('optional authenticated Fetch route reads snapshots without applying config
 	assert.equal(getGlobalDispatcher(), dispatcher);
 });
 
-test('loopback merge canonicalizes only literal equivalents; env and opt-out preserve order', (t) => {
-	const rules = ['LOCALHOST.', 'localhost', '127.0.0.1.', '127.0.0.1', '[::1]', '::1', '127.0.0.2',
+test('loopback export deduplicates only identical trimmed tokens; opt-out preserves the original list', (t) => {
+	const unique = ['LOCALHOST.', 'localhost', '127.0.0.1.', '127.0.0.1', '[::1]', '::1', '127.0.0.2',
 		'localhost:80', '.localhost', '*.localhost', 'localhost..', 'example.com.', 'example.com', '[::1]:80'];
-	const expected = ['LOCALHOST.', '127.0.0.1.', '[::1]', '127.0.0.2', 'localhost:80', '.localhost', '*.localhost', 'localhost..', 'example.com.', 'example.com', '[::1]:80'];
+	const rules = [...unique, ' localhost ', '127.0.0.1.', '[::1]', '', '  '];
+	const expected = unique;
 	assert.deepEqual(mergeLoopbackNoProxy(rules), expected);
 	assert.deepEqual(mergeLoopbackNoProxy(['127.999.0.1.', '127.999.0.1']).slice(0, 2), ['127.999.0.1.', '127.999.0.1']);
 	const engine = isolated(t);

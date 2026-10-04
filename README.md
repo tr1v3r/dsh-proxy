@@ -188,11 +188,17 @@ individual requests. No arbitrary URL probe, provider request, credentials or
 full proxy URL is sent by this status feature. Provider-aware diagnostics remain
 deferred until adapters expose an explicit effective-target/security contract.
 
-When exporting NO_PROXY with loopback bypass enabled, equivalent literal
-loopback entries (case, single trailing dot, IPv6 brackets) are deduplicated,
-preserving the first spelling and order. Suffix/wildcard/port rules, different
-127/8 addresses and non-loopback trailing dots are not newly equated.
-`bypassLoopback: false` still exports the literal user list without defaults.
+When exporting NO_PROXY with loopback bypass enabled, only identical trimmed
+entries are deduplicated, preserving user spelling and order and appending any
+missing standard defaults: `localhost`, `127.0.0.1`, `::1`. Case, trailing-dot
+and IPv6-bracket variants remain separate; for example, `127.0.0.1.` must not
+remove `127.0.0.1`, nor `[::1]` remove `::1`. External clients do not necessarily
+share the in-process hostname matching rules (curl treats these IP variants
+differently). No cross-client equivalence is assumed for `localhost` variants
+either. Suffix/wildcard/port rules and other addresses are not canonicalized.
+`bypassLoopback: false` still exports the literal user list without defaults or
+deduplication; each child client interprets that list itself. The broader
+in-process loopback detection is unchanged.
 
 ## What is covered / not covered
 
