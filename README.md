@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-listed-en.svg)](https://dsh.market/)
 
-![demo: changing proxy modes reroutes outbound requests instantly](docs/assets/proxy-switch-demo.gif)
+![Web GUI demo: sidebar proxy icon, quick mode switcher, and applied-route status](docs/assets/proxy-switch-demo.gif)
 
 `@tr1v3r/dsh-proxy` is a DeepSeek Harness plugin that routes **every
 in-process outbound request** — LLM providers, `web_search` / `web_fetch`,
@@ -14,7 +14,11 @@ streamable-http MCP — through an HTTP(S) CONNECT or SOCKS5 proxy, and lets
 you **flip the proxy on, off, or to another server at runtime**, with zero
 restarts, either from the Web Settings → General → Network proxy control or
 by editing the `dsh-proxy` entry in the profile's `cordis.patch.yml` (hot-reloaded).
-The demo above shows the routing engine: `node scripts/demo.mjs` after install.
+The GIF above uses real screenshots from an isolated DSH Web profile: the sidebar
+proxy icon, Direct / Follow system / Manual quick switcher, and Settings → General
+→ Network proxy with the host-applied route snapshot. The endpoint is illustrative;
+the snapshot is not a connectivity test. For the separate terminal routing-engine
+demo, run `node scripts/demo.mjs` after install.
 
 ## How it works
 
