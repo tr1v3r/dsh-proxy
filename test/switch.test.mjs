@@ -240,8 +240,19 @@ test('isLoopbackHostname recognizes every loopback literal form', () => {
 test('mergeLoopbackNoProxy merges user rules with the loopback set, deduplicated', () => {
 	assert.deepEqual(mergeLoopbackNoProxy([]), ['localhost', '127.0.0.1', '::1']);
 	// user rules first, loopback additions appended, duplicates dropped
-	assert.deepEqual(mergeLoopbackNoProxy(['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1']), ['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1']);
+	assert.deepEqual(mergeLoopbackNoProxy(['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1']), ['a.corp', 'LOCALHOST', '[::1]', '127.0.0.1', 'localhost', '::1']);
 	assert.deepEqual(mergeLoopbackNoProxy(['localhost', 'b.corp']), ['localhost', 'b.corp', '127.0.0.1', '::1']);
+});
+
+test('NO_PROXY variants never suppress standard defaults, regardless of order', () => {
+	const defaults = ['localhost', '127.0.0.1', '::1'];
+	for (const variant of ['LOCALHOST', 'localhost.', 'LOCALHOST.', '127.0.0.1.', '[::1]',
+		'0:0:0:0:0:0:0:1', '::1.', '127.0.0.2.', '0.0.0.0.']) {
+		assert.deepEqual(mergeLoopbackNoProxy([variant]), [variant, ...defaults]);
+		assert.deepEqual(mergeLoopbackNoProxy([...defaults, variant]), [...defaults, variant]);
+		assert.deepEqual(mergeLoopbackNoProxy([variant, ...defaults]), [variant, ...defaults]);
+	}
+	assert.deepEqual(mergeLoopbackNoProxy([' localhost ', 'localhost', '', '  ']), defaults);
 });
 
 /* ------------------------------------------- unit: system-proxy detection */
