@@ -73,7 +73,7 @@ authenticated upstream) instead of embedding `user:pass@` in the URL.
 
 ## Install
 
-DSH compatibility is declared in top-level `engines.dsh`: `>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1`. The `0.2.2-rc.1` runtime is verified; later releases require separate validation.
+DSH compatibility is declared in top-level `engines.dsh`: `>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1 || 0.2.2-rc.3`. The `0.2.2-rc.1` and `0.2.2-rc.3` runtimes are verified; other releases require separate validation.
 
 In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
