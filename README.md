@@ -73,7 +73,7 @@ authenticated upstream) instead of embedding `user:pass@` in the URL.
 
 ## Install
 
-DSH compatibility is declared in top-level `engines.dsh`: `>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1`. The `0.2.2-rc.1` runtime is verified; later releases require separate validation.
+DSH compatibility is declared in top-level `engines.dsh`: `>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5`. The `0.2.2-rc.1` through `0.2.2-rc.5` runtimes are verified; later releases require separate validation.
 
 In the target profile directory (`~/.config/dsh/profiles/<name>/`):
 
@@ -82,7 +82,7 @@ In the target profile directory (`~/.config/dsh/profiles/<name>/`):
    ```json
    {
      "dependencies": {
-       "@tr1v3r/dsh-proxy": "^0.2.6"
+       "@tr1v3r/dsh-proxy": "^0.2.7"
      },
      "dsh": {
        "profile": {

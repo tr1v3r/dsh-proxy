@@ -60,7 +60,7 @@ dispatcher 槽位（`Symbol.for('undici.globalDispatcher.1')`）。本插件接�
 
 ## 安装
 
-DSH 兼容范围通过顶层 `engines.dsh` 声明：`>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1`。已验证 `0.2.2-rc.1`，后续版本需单独验证。
+DSH 兼容范围通过顶层 `engines.dsh` 声明：`>=0.1.7-rc.1 <0.2.2-0 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5`。已验证 `0.2.2-rc.1` 至 `0.2.2-rc.5`，后续版本需单独验证。
 
 在目标 profile 目录（`~/.config/dsh/profiles/<name>/`）：
 
@@ -69,7 +69,7 @@ DSH 兼容范围通过顶层 `engines.dsh` 声明：`>=0.1.7-rc.1 <0.2.2-0 || 0.
    ```json
    {
      "dependencies": {
-       "@tr1v3r/dsh-proxy": "^0.2.6"
+       "@tr1v3r/dsh-proxy": "^0.2.7"
      },
      "dsh": {
        "profile": {
