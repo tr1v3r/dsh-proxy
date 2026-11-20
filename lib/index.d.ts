@@ -82,5 +82,8 @@ export function detectSystemProxy(
 	platform?: string,
 	env?: Record<string, string | undefined>
 ): SystemProxySpec | null;
-export function createEngine(logger: unknown): SwitchEngine;
+export function createEngine(
+	logger: unknown,
+	env?: Record<string, string | undefined>
+): SwitchEngine;
 export function apply(ctx: Context, config?: ProxySection | { get(): ProxySection }): void;

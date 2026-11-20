@@ -89,7 +89,8 @@ mkdirSync(join(profileDir, 'node_modules', '@tr1v3r'), { recursive: true });
 cpSync(PLUGIN_DIR, join(profileDir, 'node_modules', '@tr1v3r', 'dsh-proxy'), {
 	recursive: true,
 	filter: (src) => {
-		const top = relative(PLUGIN_DIR, src).split('/')[0];
+		// Split on both separators: `path.relative` yields `\` on Windows.
+		const top = relative(PLUGIN_DIR, src).split(/[\\/]/)[0];
 		return !top || ['package.json', 'cordis.patch.yml', 'lib'].includes(top);
 	}
 });
@@ -169,6 +170,19 @@ function check(label, condition, detail) {
 	console.log(`probe: ok ${label}`);
 }
 
+/** Parse the `window.__DSH_BOOT__` client-entry graph injected into the index page. */
+function parseBootGraph(html) {
+	const at = html.indexOf('__DSH_BOOT__');
+	const start = at === -1 ? -1 : html.indexOf('{', at);
+	const end = start === -1 ? -1 : html.indexOf('</script>', start);
+	if (start === -1 || end === -1) return null;
+	try {
+		return JSON.parse(html.slice(start, end).trim().replace(/;$/, ''));
+	} catch {
+		return null;
+	}
+}
+
 try {
 	const settings = ctx.get('settings');
 	const described = settings.describe();
@@ -187,7 +201,7 @@ try {
 	await waitFor('dispatcher restored', () => getGlobalDispatcher() === baseline);
 	const direct = await (await fetch(originUrl)).text();
 	check('hot-off: fetch direct', direct === 'origin-ok' && originHits.length === 1 && proxyHits.length === 1);
-	check('hot-off: env cleared', process.env.HTTP_PROXY === undefined);
+	check('hot-off: env cleared', process.env.HTTP_PROXY === undefined, process.env.HTTP_PROXY);
 
 	// ---- hot switch on again (proxy port unchanged)
 	await settings.update('dsh-proxy', { mode: 'manual' });
@@ -228,6 +242,15 @@ try {
 		const auth = await fetch(connection.authenticatedUrl(baseUrl), { redirect: 'manual' });
 		const cookie = auth.headers.get('set-cookie')?.split(';')[0];
 		check('web: process-token exchange issues a browser cookie', Boolean(cookie));
+		// ---- the browser bundle is reachable through the client-module graph
+		const index = await (await fetch(`${baseUrl}/`, { headers: { cookie } })).text();
+		const graph = parseBootGraph(index);
+		const row = graph?.entries?.find((entry) => entry.id === '@tr1v3r/dsh-proxy');
+		check('web: client boot graph lists the plugin row', Boolean(row), Object.keys(graph ?? {}).join(','));
+		const bundle = await fetch(`${baseUrl}/${row.url.replace(/^\//, '')}`, { headers: { cookie } });
+		const source = await bundle.text();
+		check('web: client bundle is served', bundle.ok && source.includes('__ModuleLoader__.load') && source.includes('@tr1v3r/dsh-proxy'), `${bundle.status} ${source.length}B`);
+		check('web: client bundle registers both Web slots', source.includes('settings.general.item') && source.includes('sidebar.footer.action'));
 		const url = `${baseUrl}/api/dsh-proxy/status`;
 		check('web: unauthenticated status is rejected', (await fetch(url)).status === 401);
 		check('web: foreign Origin is rejected', (await fetch(url, { headers: { cookie, origin: 'https://untrusted.invalid' } })).status === 403);
