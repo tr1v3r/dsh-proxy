@@ -46,6 +46,17 @@ function isolateProxyEnv(t) {
 	});
 }
 
+/** A case-folding environment stand-in: Windows folds `process.env` names. */
+function foldingEnv(initial = {}) {
+	const store = new Map(Object.entries(initial).map(([key, value]) => [key.toLowerCase(), value]));
+	return new Proxy({}, {
+		get: (_, key) => (typeof key === 'string' ? store.get(key.toLowerCase()) : undefined),
+		set: (_, key, value) => { store.set(String(key).toLowerCase(), String(value)); return true; },
+		has: (_, key) => typeof key === 'string' && store.has(key.toLowerCase()),
+		deleteProperty: (_, key) => { store.delete(String(key).toLowerCase()); return true; }
+	});
+}
+
 /** Plain origin server that echoes how the request reached it. */
 async function startOrigin() {
 	const server = http.createServer((req, res) => {
@@ -750,6 +761,29 @@ test('operator values set mid-session are adopted, not clobbered', (t) => {
 	engine.apply({ enabled: false });
 	assert.equal(process.env.HTTP_PROXY, 'http://operator-mid:1');
 	delete process.env.HTTP_PROXY;
+});
+
+test('case-folding environments (Windows) clear and restore every env spelling', (t) => {
+	// `process.env` folds names on Windows, so writing HTTP_PROXY is visible as
+	// http_proxy. A plain object keeps that behavior testable on every platform.
+	const env = foldingEnv();
+	const engine = createEngine(null, env);
+	t.after(() => engine.restore());
+
+	engine.apply({ enabled: true, proxy: 'http://127.0.0.1:9', noProxy: ['a.corp'] });
+	assert.equal(env.HTTP_PROXY, 'http://127.0.0.1:9');
+	assert.equal(env.http_proxy, 'http://127.0.0.1:9');
+	assert.equal(env.NO_PROXY, 'a.corp,localhost,127.0.0.1,::1');
+
+	engine.apply({ enabled: false });
+	for (const key of PROXY_ENV_KEYS) assert.ok(!(key in env), `${key} must be cleared`);
+
+	// an operator value in either spelling survives the switch cycle
+	env.http_proxy = 'http://operator:1';
+	engine.apply({ enabled: true, proxy: 'http://127.0.0.1:9' });
+	assert.equal(env.HTTP_PROXY, 'http://operator:1');
+	engine.apply({ enabled: false });
+	assert.equal(env.HTTP_PROXY, 'http://operator:1');
 });
 
 test('proxy URL credentials are redacted in logs', () => {
